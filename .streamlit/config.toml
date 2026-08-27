@@ -1,0 +1,29 @@
+# =============================================================================
+# CONFIGURACIÓN DE TEMA — ACADEMIA DE FÚTBOL
+# -----------------------------------------------------------------------------
+# Esta es la forma OFICIAL de Streamlit para fijar los colores de la app,
+# independiente del modo claro/oscuro del sistema operativo o navegador del
+# usuario. Es más robusta que solo usar CSS, porque controla el motor de
+# theming interno de Streamlit (labels, inputs, radios, dataframes, alerts).
+#
+# UBICACIÓN OBLIGATORIA: esta carpeta ".streamlit" con este archivo
+# "config.toml" debe estar en el MISMO nivel que app.py, así:
+#
+#   APPls/
+#   ├── .streamlit/
+#   │   └── config.toml   <- este archivo
+#   └── app.py
+#
+# No se importa desde el código: Streamlit lo detecta solo al arrancar
+# con `streamlit run app.py`.
+# =============================================================================
+
+[theme]
+base = "light"
+primaryColor = "#C8102E"              # rojo carmesí (acentos, radios, focus)
+backgroundColor = "#FFFFFF"           # fondo de tarjetas/formularios
+secondaryBackgroundColor = "#F4F5F7"  # fondo general de la app
+textColor = "#1A1A1A"                 # texto principal (negro suave)
+font = "sans serif"
+[client]
+showSidebarNavigation = false
