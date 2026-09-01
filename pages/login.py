@@ -3,9 +3,13 @@
  MODULO: LOGIN / AUTENTICACION
 =============================================================================
 Pantalla de autenticacion centrada, en formato tarjeta.
-Diseño corporativo: contenedores con borde, botones primary, iconos Material.
+Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
@@ -15,11 +19,13 @@ from estilos import inject_css
 
 def render_login() -> None:
     """Pantalla de autenticacion centrada, en formato tarjeta."""
-    from estilos import inject_css
     inject_css()
 
-    st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
-    col_izq, col_centro, col_der = st.columns([1, 1.2, 1])
+    # Espaciadores físicos infalibles para empujar el login hacia abajo
+    st.markdown("<br><br><br><br>", unsafe_allow_html=True)
+    
+    # Hacer la columna central un poco más ancha (de 1.2 a 1.6)
+    col_izq, col_centro, col_der = st.columns([1, 1.6, 1])
 
     with col_centro:
         with st.container(border=True):
@@ -52,5 +58,3 @@ def render_login() -> None:
             '<p class="login-hint">Usuarios demo &nbsp;·&nbsp; admin / admin123 &nbsp;·&nbsp; profe / profe123</p>',
             unsafe_allow_html=True,
         )
-
-    st.markdown("</div>", unsafe_allow_html=True)

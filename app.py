@@ -45,9 +45,75 @@ from estilos import inject_css
 NOMBRE_ACADEMIA = "Academia La Serena"
 
 
+def _init_session_state() -> None:
+    """Inicialización UNA sola vez por sesión."""
+    defaults = {
+        "authenticated": False,
+        "user": None,
+        "_css_injected": False,
+        "_css_auth_hidden": False,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
+def _inject_global_css() -> None:
+    """CSS global UNA sola vez."""
+    if not st.session_state._css_injected:
+        from estilos import inject_css
+        inject_css()
+
+        # CSS para ocultar controles de Streamlit
+        st.markdown("""
+            <style>
+                [data-testid="collapsedControl"] { display: none !important; }
+            </style>
+        """, unsafe_allow_html=True)
+        st.session_state._css_injected = True
+
+
+def _inject_conditional_css() -> None:
+    """CSS condicional SOLO si cambia estado auth."""
+    if not st.session_state.authenticated and not st.session_state._css_auth_hidden:
+        st.markdown("""
+            <style>[data-testid="stSidebar"] { display: none !important; }</style>
+        """, unsafe_allow_html=True)
+        st.session_state._css_auth_hidden = True
+    elif st.session_state.authenticated and st.session_state._css_auth_hidden:
+        st.session_state._css_auth_hidden = False
+
+
+def _render_topbar() -> None:
+    user = st.session_state.user
+    st.markdown(f"""
+        <div class="topbar-chip">
+            <span class="topbar-dot"></span>{user['nombre']} · {user['rol']}
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def _route(seleccion: str) -> None:
+    """Routing con imports al top (lazy load opcional)."""
+    routes = {
+        "Registrar Jugador": ("pages.registro", "render_registro"),
+        "Plantillas": ("pages.plantillas", "render_plantillas"),
+        "Control de Asistencia": ("pages.asistencia", "render_asistencia"),
+        "Categorias": ("pages.categorias", "render_categorias"),
+        "Pagos": ("pages.pagos", "render_pagos"),
+    }
+    if seleccion in routes:
+        module_path, func_name = routes[seleccion]
+        module = __import__(module_path, fromlist=[func_name])
+        getattr(module, func_name)()
+
+
 def render_sidebar() -> str:
     """Renderiza el menu lateral segun el rol del usuario. Retorna la opcion elegida."""
     rol = st.session_state.user["rol"]
+
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "Registrar Jugador" if rol == "Administrador" else "Control de Asistencia"
 
     with st.sidebar:
         st.markdown(
@@ -68,11 +134,15 @@ def render_sidebar() -> str:
             opciones = ["Control de Asistencia"]
             iconos = ["calendar-check"]
 
+        # Validacion de seguridad (evita el ValueError si el estado se corrompe)
+        if st.session_state.current_page not in opciones:
+            st.session_state.current_page = opciones[0]
+
         seleccion = option_menu(
             menu_title=None,
             options=opciones,
             icons=iconos,
-            default_index=0,
+            default_index=opciones.index(st.session_state.current_page),
             styles={
                 "container": {"padding": "0", "background-color": "#111111"},
                 "icon": {"color": "#CCCCCC", "font-size": "18px"},
@@ -84,7 +154,6 @@ def render_sidebar() -> str:
                     "border-radius": "8px",
                     "color": "#CCCCCC",
                     "font-weight": "500",
-                    "opacity": "1",
                     "--hover-color": "#222222",
                 },
                 "nav-link-selected": {
@@ -99,6 +168,11 @@ def render_sidebar() -> str:
         if st.button("Cerrar Sesion", width="stretch", key="logout_btn"):
             st.session_state.authenticated = False
             st.session_state.user = None
+            try:
+                from database import get_supabase
+                get_supabase().auth.sign_out()
+            except Exception:
+                pass
             st.rerun()
 
         st.markdown(
@@ -106,7 +180,12 @@ def render_sidebar() -> str:
             unsafe_allow_html=True,
         )
 
-    return seleccion
+    # Actualizacion segura
+    if seleccion != st.session_state.current_page:
+        st.session_state.current_page = seleccion
+        st.rerun()
+
+    return st.session_state.current_page
 
 
 def main() -> None:
@@ -118,22 +197,27 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
-    # Ocultar SIEMPRE el control de colapso (flechita) - no queremos que se pueda colapsar
+    # Ocultar el control de colapso (flechita) SOLO en PC, en celular lo necesitamos para abrir el menú nativo
     st.markdown(
         """
         <style>
-            [data-testid="collapsedControl"] { display: none !important; }
+            @media (min-width: 769px) {
+                [data-testid="collapsedControl"] { display: none !important; }
+            }
+            @media (max-width: 768px) {
+                [data-testid="collapsedControl"] { 
+                    display: flex !important; 
+                    z-index: 999999 !important; 
+                }
+            }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-        st.session_state.user = None
-
-    from estilos import inject_css
-    inject_css()
+    _init_session_state()
+    _inject_global_css()
+    _inject_conditional_css()
 
     if not st.session_state.authenticated:
         # Ocultar sidebar SOLO en pagina de login
@@ -149,36 +233,16 @@ def main() -> None:
         render_login()
         return
 
-    inject_css()
-
     # Renderizar topbar con info de usuario
-    st.markdown(
-        f"""
-        <div class="topbar-chip">
-            <span class="topbar-dot"></span>{st.session_state.user['nombre']} · {st.session_state.user['rol']}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    _render_topbar()
 
     seleccion = render_sidebar()
 
     # Routing a modulos
-    if seleccion == "Registrar Jugador":
-        from pages.registro import render_registro
-        render_registro()
-    elif seleccion == "Plantillas":
-        from pages.plantillas import render_plantillas
-        render_plantillas()
-    elif seleccion == "Control de Asistencia":
-        from pages.asistencia import render_asistencia
-        render_asistencia()
-    elif seleccion == "Categorias":
-        from pages.categorias import render_categorias
-        render_categorias()
-    elif seleccion == "Pagos":
-        from pages.pagos import render_pagos
-        render_pagos()
+    _route(seleccion)
+
+
+
 
 
 if __name__ == "__main__":

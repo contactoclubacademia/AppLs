@@ -3,20 +3,21 @@
  MODULO: REGISTRO DE JUGADOR
 =============================================================================
 Modulo: alta de un nuevo jugador y su apoderado (solo Administrador).
-Diseño corporativo: contenedores con borde, botones primary, iconos Material.
+Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import re
 from datetime import date, datetime
 
 import streamlit as st
 
-from database import *
-
-
-# Constante local para evitar dependencia circular
-POSICIONES = ["Arquero", "Defensa", "Mediocampista", "Delantero"]
+from estilos import inject_css
+from database import obtener_categorias, obtener_profesor_de, guardar_jugador
 
 
 def validar_formato_rut(rut: str) -> bool:
@@ -62,7 +63,6 @@ def render_registro() -> None:
                 categoria_sel = st.selectbox(
                     "Categoria *", opciones_categoria, disabled=not categorias_disponibles,
                 )
-                posicion = st.selectbox("Posicion *", POSICIONES)
 
         if categorias_disponibles:
             profesor_cat = obtener_profesor_de(categoria_sel)
@@ -102,7 +102,6 @@ def render_registro() -> None:
                     "nombre": nombre_jugador.strip(),
                     "anio_nacimiento": int(anio_nacimiento),
                     "categoria": categoria_sel,
-                    "posicion": posicion,
                     "apoderado_rut": rut_apoderado.strip(),
                     "apoderado_nombre": nombre_apoderado.strip(),
                     "apoderado_telefono": telefono_apoderado.strip(),

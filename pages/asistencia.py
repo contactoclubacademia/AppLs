@@ -3,22 +3,25 @@
  MODULO: CONTROL DE ASISTENCIA
 =============================================================================
 Modulo: toma de asistencia por fecha y categoria (Administrador y Profesor).
-Diseño corporativo: contenedores con borde, botones primary, iconos Material.
+Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import date
 
 import streamlit as st
 
+from estilos import inject_css
 from database import obtener_categorias, obtener_jugadores, obtener_asistencia, obtener_profesor_de, guardar_asistencia
 
 
 def render_asistencia() -> None:
     """Modulo: toma de asistencia por fecha y categoria (Administrador y Profesor)."""
-
-    from estilos import inject_css
-    from database import obtener_categorias, obtener_jugadores, obtener_asistencia, obtener_profesor_de, guardar_asistencia
+    inject_css()
 
     st.title(":material/calendar_check: Control de Asistencia")
 

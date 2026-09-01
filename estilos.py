@@ -24,7 +24,7 @@ def inject_css() -> None:
         [data-testid="stToolbar"] {visibility: hidden; height: 0;}
         [data-testid="stDecoration"] {visibility: hidden; height: 0;}
         [data-testid="stStatusWidget"] {visibility: hidden; height: 0;}
-        [data-testid="stHeader"] {background: transparent; overflow: visible;}
+        [data-testid="stStatusWidget"] {visibility: hidden; height: 0;}
 
         /* -------- FIX: flechita para abrir/cerrar el sidebar --------
            `visibility` se hereda en CSS: al ocultar stToolbar/stDecoration
@@ -49,6 +49,8 @@ def inject_css() -> None:
             width: auto !important;
             display: flex !important;
             z-index: 999999 !important;
+            margin-top: 25px !important;
+            margin-left: 10px !important;
         }
         [data-testid="stExpandSidebarButton"] *,
         [data-testid="stSidebarCollapseButton"] *,
@@ -81,10 +83,24 @@ def inject_css() -> None:
             color: #1A1A1A;
         }
 
-        .main .block-container {
-            padding-top: 2.2rem;
-            padding-bottom: 3rem;
+        /* En versiones modernas, el header fantasma ocupa 60px. Lo hacemos invisible pero SIN borrarlo del DOM para no perder el botón del sidebar. */
+        [data-testid="stHeader"], .stApp > header {
+            background: transparent !important;
+            height: 0px !important;
+            min-height: 0px !important;
+        }
+
+        div.block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 0rem !important;
+            margin-top: 0 !important;
             max-width: 1200px;
+        }
+        
+        /* Ajustar el primer título para que alinee perfecto con el botón */
+        div.block-container h1 {
+            margin-top: -1rem !important;
+            padding-top: 0 !important;
         }
 
         /* ==================== SIDEBAR ==================== */
@@ -152,7 +168,7 @@ def inject_css() -> None:
         }
 
         /* ==================== LOGIN ==================== */
-        .login-wrapper { padding-top: 50px; }
+        .login-wrapper { padding-top: 130px; }
         .login-card {
             text-align: center; background: #FFFFFF;
             padding: 42px 30px 12px 30px; border-radius: 16px 16px 0 0;
@@ -220,19 +236,32 @@ def inject_css() -> None:
 
         div[data-testid="stAlert"] { border-radius: 10px; }
 
-        h5, .stMarkdown h5 { color: #1A1A1A; font-weight: 700; }
-
         /* ==================== RESPONSIVE (TELÉFONO) ====================
-           Streamlit ya apila columnas automáticamente en pantallas
-           angostas; estos ajustes son para las piezas de CSS propias
-           (chip flotante, títulos, radios horizontales) que sí pueden
-           romperse o quedar muy grandes/superpuestas en un celular. */
+           Ajustes seguros de Streamlit nativo para no romper la interfaz */
         @media (max-width: 768px) {
-            .main .block-container {
-                padding-top: 1.1rem;
+            /* Asegurar que el botón para abrir el menú en celular se vea bien */
+            [data-testid="collapsedControl"] {
+                top: 15px !important;
+                left: 10px !important;
+                background-color: #FFFFFF !important;
+                border: 1px solid #E2E4E8 !important;
+                border-radius: 8px !important;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+            }
+            [data-testid="collapsedControl"] svg {
+                fill: #C8102E !important;
+            }
+
+            .main .block-container,
+            [data-testid="stAppViewBlockContainer"] {
+                padding-top: 3.5rem !important; /* Más espacio arriba para que el contenido no tape el botón */
                 padding-left: 1rem;
                 padding-right: 1rem;
                 padding-bottom: 2rem;
+            }
+            .main .block-container h1,
+            [data-testid="stAppViewBlockContainer"] h1 {
+                margin-top: 0 !important;
             }
             .topbar-chip {
                 float: none;
@@ -241,20 +270,35 @@ def inject_css() -> None:
                 font-size: 11px;
                 padding: 6px 12px;
             }
-            .page-header { margin-bottom: 18px; }
-            .page-header h1 { font-size: 19px; }
-            .page-header p { font-size: 12.5px; }
-            .login-wrapper { padding-top: 16px; }
-            .login-card { padding: 30px 18px 10px 18px; }
-            div[data-testid="stForm"] { padding: 20px 18px 24px 18px; }
-            /* En una sola columna, el encabezado "Jugador / Estado" de
-               Asistencia ya no tiene con qué alinearse: se oculta y el
-               nombre del jugador queda justo encima de su propio radio. */
+            .page-header { margin-bottom: 15px; }
+            .page-header h1 { font-size: 17px !important; }
+            .page-header p { font-size: 11.5px !important; }
+            
+            /* Títulos generales de Streamlit (Markdown) reducidos para celular */
+            h1, .stMarkdown h1 { font-size: 18px !important; }
+            h2, .stMarkdown h2 { font-size: 16px !important; }
+            h3, .stMarkdown h3 { font-size: 15px !important; }
+            h4, .stMarkdown h4 { font-size: 14px !important; }
+            
+            /* Pestañas (Tabs) más pequeñas */
+            .stTabs button p { font-size: 13px !important; }
+
+            .login-wrapper { padding-top: 50px; }
+            .login-card { padding: 25px 15px 10px 15px; }
+            .login-title { font-size: 18px !important; margin-top: 5px; }
+            .login-subtitle { font-size: 12px !important; }
+            
+            div[data-testid="stForm"] { padding: 15px 15px 20px 15px; }
             .asistencia-header-row { display: none; }
-            div[data-testid="stRadio"] label p { font-size: 13px; }
-            .sidebar-brand { font-size: 17px; }
+            div[data-testid="stRadio"] label p { font-size: 12.5px !important; }
+            .sidebar-brand { font-size: 16px; }
         }
+
+
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+
