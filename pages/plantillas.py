@@ -36,7 +36,8 @@ def render_plantillas() -> None:
 
     categorias = obtener_categorias()
 
-    tab1, tab2 = st.tabs(["Listado General", "Modificar Jugadores"])
+    import io
+    tab1, tab2, tab3 = st.tabs(["Listado General", "Modificar Jugadores", "Carga Masiva (Excel)"])
 
     with tab1:
         with st.container(border=True):
@@ -64,17 +65,28 @@ def render_plantillas() -> None:
                 st.subheader(":material/list: Listado de Jugadores")
                 df = pd.DataFrame(jugadores_tabla)
                 
-                # Filtrar solo las columnas que existen (sin 'posicion' que ya no se pide)
                 columnas_db = ["nombre", "rut", "categoria", "apoderado_nombre", "apoderado_telefono", "fecha_registro"]
                 df = df[[col for col in columnas_db if col in df.columns]]
                 
-                # Formatear la fecha para que se vea corta (solo YYYY-MM-DD)
                 if "fecha_registro" in df.columns:
                     df["fecha_registro"] = df["fecha_registro"].apply(lambda x: str(x).split("T")[0] if "T" in str(x) else str(x).split(" ")[0])
 
                 df.columns = ["Nombre", "RUT", "Categoria", "Apoderado", "Telefono Apoderado", "Fecha Registro"]
 
                 st.dataframe(df, width="stretch", hide_index=True)
+                
+                st.write("")
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name="Jugadores")
+                
+                st.download_button(
+                    label=":material/download: Descargar Listado en Excel",
+                    data=excel_buffer.getvalue(),
+                    file_name="Listado_Jugadores.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
 
     with tab2:
         with st.container(border=True):
@@ -117,7 +129,7 @@ def render_plantillas() -> None:
                         nuevo_tel_emergencia = st.text_input("Teléfono de Emergencia *", value=j_data.get("telefono_emergencia", ""))
                     with c4:
                         nuevo_apo_rut = st.text_input("RUT Apoderado *", value=j_data.get("apoderado_rut", ""))
-                        nuevo_apo_correo = st.text_input("Correo Apoderado *", value=j_data.get("apoderado_correo", ""))
+                        nuevo_apo_correo = st.text_input("Correo Apoderado (Opcional)", value=j_data.get("apoderado_correo", ""))
 
                     st.markdown("---")
                     c5, c6 = st.columns(2)
@@ -137,9 +149,9 @@ def render_plantillas() -> None:
                             "apoderado_rut": nuevo_apo_rut.strip(),
                             "apoderado_correo": nuevo_apo_correo.strip()
                         }
-                        campos_obligatorios = [nuevo_nombre, nuevo_apo_nombre, nuevo_apo_tel, nuevo_tel_emergencia, nuevo_apo_rut, nuevo_apo_correo]
+                        campos_obligatorios = [nuevo_nombre, nuevo_apo_nombre, nuevo_apo_tel, nuevo_tel_emergencia, nuevo_apo_rut]
                         if not all(str(c).strip() for c in campos_obligatorios):
-                            st.error("Los campos marcados con * son obligatorios.")
+                            st.error("Los campos marcados con * son obligatorios.", icon=":material/error:")
                         elif actualizar_jugador(j_data["rut"], nuevos_datos):
                             st.session_state.msg_jugador_exito = f"Datos de {nuevo_nombre} actualizados correctamente."
                             st.cache_data.clear()
@@ -152,3 +164,98 @@ def render_plantillas() -> None:
                             st.cache_data.clear()
                             st.cache_resource.clear()
                             st.rerun()
+
+    with tab3:
+        with st.container(border=True):
+            st.subheader(":material/upload_file: Carga Masiva de Jugadores")
+            st.write("Sube un archivo Excel para agregar o registrar múltiples jugadores rápidamente.")
+            
+            st.markdown("##### 1. Descarga la plantilla")
+            
+            ruta_plantilla = Path(__file__).parent.parent / "Plantilla_Oficial.xlsx"
+            
+            if ruta_plantilla.exists():
+                with open(ruta_plantilla, "rb") as f:
+                    template_data = f.read()
+                st.download_button(
+                    label=":material/download: Descargar Plantilla Oficial",
+                    data=template_data,
+                    file_name="Plantilla_Oficial.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                df_template = pd.DataFrame(columns=[
+                    "Nombre Completo", "RUT (Ej: 12345678-9)", "Categoria", "Anio Nacimiento", 
+                    "Nombre Apoderado", "RUT Apoderado", "Telefono Apoderado", 
+                    "Telefono Emergencia", "Correo Apoderado"
+                ])
+                template_buffer = io.BytesIO()
+                with pd.ExcelWriter(template_buffer, engine='openpyxl') as writer:
+                    df_template.to_excel(writer, index=False, sheet_name="Plantilla")
+                
+                st.download_button(
+                    label=":material/download: Descargar Plantilla (Autogenerada)",
+                    data=template_buffer.getvalue(),
+                    file_name="Plantilla_Generada.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            
+            st.markdown("##### 2. Sube el Excel completado")
+            archivo_subido = st.file_uploader("Selecciona el archivo", type=["xlsx", "xls"])
+            
+            if archivo_subido is not None:
+                try:
+                    df_subido = pd.read_excel(archivo_subido)
+                    
+                    if len(df_subido) > 0:
+                        st.write(f"Se encontraron **{len(df_subido)}** registros en el archivo. Previsualización:")
+                        st.dataframe(df_subido.head(), use_container_width=True)
+                        
+                        if st.button("Procesar y Guardar Jugadores", type="primary", use_container_width=True):
+                            from database import guardar_jugador
+                            from datetime import datetime
+                            
+                            exitosos = 0
+                            errores = 0
+                            
+                            with st.spinner("Guardando jugadores en la base de datos..."):
+                                for index, row in df_subido.iterrows():
+                                    try:
+                                        # Manejar NaN y limpiar datos
+                                        rut_str = str(row.get("RUT (Ej: 12345678-9)", "")).strip()
+                                        nombre_str = str(row.get("Nombre Completo", "")).strip()
+                                        
+                                        if rut_str.lower() == "nan" or not rut_str or nombre_str.lower() == "nan" or not nombre_str:
+                                            errores += 1
+                                            continue
+                                            
+                                        jugador = {
+                                            "rut": rut_str,
+                                            "nombre": nombre_str,
+                                            "categoria": str(row.get("Categoria", "")).strip().replace("nan", ""),
+                                            "anio_nacimiento": int(row.get("Anio Nacimiento", 2014)) if pd.notna(row.get("Anio Nacimiento")) else 2014,
+                                            "apoderado_nombre": str(row.get("Nombre Apoderado", "")).strip().replace("nan", ""),
+                                            "apoderado_rut": str(row.get("RUT Apoderado", "")).strip().replace("nan", ""),
+                                            "apoderado_telefono": str(row.get("Telefono Apoderado", "")).strip().replace("nan", ""),
+                                            "telefono_emergencia": str(row.get("Telefono Emergencia", "")).strip().replace("nan", ""),
+                                            "apoderado_correo": str(row.get("Correo Apoderado", "")).strip().replace("nan", ""),
+                                            "fecha_registro": datetime.now().isoformat()
+                                        }
+                                        
+                                        if guardar_jugador(jugador):
+                                            exitosos += 1
+                                        else:
+                                            errores += 1
+                                    except Exception as e:
+                                        errores += 1
+                                        
+                            if exitosos > 0:
+                                st.success(f"Se guardaron {exitosos} jugadores correctamente.", icon=":material/check_circle:")
+                                st.cache_data.clear()
+                                st.cache_resource.clear()
+                            if errores > 0:
+                                st.error(f"Hubo {errores} registros con errores (datos incompletos o jugador ya existe).", icon=":material/error:")
+                    else:
+                        st.warning("El archivo Excel está vacío. Llena los datos usando la plantilla.", icon=":material/warning:")
+                except Exception as e:
+                    st.error(f"Error al leer el archivo Excel. Asegúrate de usar la plantilla correcta. Detalle: {e}", icon=":material/error:")

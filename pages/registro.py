@@ -77,7 +77,7 @@ def render_registro() -> None:
                 nombre_apoderado = st.text_input("Nombre del Apoderado *", placeholder="Nombre y apellidos")
                 telefono_apoderado = st.text_input("Telefono *", placeholder="+56 9 1234 5678")
             with c4:
-                correo_apoderado = st.text_input("Correo Electronico *", placeholder="correo@ejemplo.com")
+                correo_apoderado = st.text_input("Correo Electronico (Opcional)", placeholder="correo@ejemplo.com")
                 telefono_emergencia = st.text_input("Telefono de Emergencia *", placeholder="+56 9 8765 4321")
 
         # Boton de envio DENTRO del formulario
@@ -86,16 +86,16 @@ def render_registro() -> None:
         if enviado:
             campos_obligatorios = [
                 rut_jugador, nombre_jugador, rut_apoderado, nombre_apoderado,
-                telefono_apoderado, correo_apoderado, telefono_emergencia,
+                telefono_apoderado, telefono_emergencia,
             ]
             if not categorias_disponibles:
-                st.error("No puedes registrar jugadores sin categorias. Crealas en Categorias primero.")
+                st.error("No puedes registrar jugadores sin categorias. Crealas en Categorias primero.", icon=":material/error:")
             elif not all(str(c).strip() for c in campos_obligatorios):
-                st.error("Por favor completa todos los campos obligatorios (*).")
+                st.error("Por favor completa todos los campos obligatorios (*).", icon=":material/error:")
             elif not validar_formato_rut(rut_jugador):
-                st.error("El RUT del jugador debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).")
+                st.error("El RUT del jugador debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).", icon=":material/error:")
             elif not validar_formato_rut(rut_apoderado):
-                st.error("El RUT del apoderado debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).")
+                st.error("El RUT del apoderado debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).", icon=":material/error:")
             else:
                 jugador = {
                     "rut": rut_jugador.strip(),

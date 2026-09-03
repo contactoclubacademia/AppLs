@@ -301,8 +301,37 @@ def obtener_asistencia(fecha: str, categoria: str) -> dict:
                 resultado[rut] = {"jugador": nombre, "estado": estado}
         return resultado
     except Exception as e:
-        st.error(f"❌ Error de Supabase al obtener asistencia: {e}")
+        st.error(f"Error de Supabase al obtener asistencia: {e}", icon=":material/error:")
         return {}
+
+
+def obtener_asistencia_general(categoria: Optional[str] = None) -> list:
+    """
+    Retorna el historial completo de asistencia, opcionalmente filtrado por categoría.
+    Realiza un JOIN con la tabla de jugadores para obtener los nombres.
+    """
+    try:
+        query = get_supabase().table("asistencia").select("fecha, jugador_rut, estado, categoria, jugadores(nombre)")
+        if categoria:
+            query = query.eq("categoria", categoria)
+        response = query.execute()
+        
+        resultados = []
+        if response.data:
+            for row in response.data:
+                jugador_info = row.get("jugadores")
+                nombre = jugador_info.get("nombre", "") if isinstance(jugador_info, dict) else ""
+                resultados.append({
+                    "fecha": row["fecha"],
+                    "jugador_rut": row["jugador_rut"],
+                    "estado": row["estado"],
+                    "categoria": row["categoria"],
+                    "jugador_nombre": nombre
+                })
+        return resultados
+    except Exception as e:
+        st.error(f"Error de Supabase al obtener historial de asistencia: {e}", icon=":material/error:")
+        return []
 
 
 # =============================================================================

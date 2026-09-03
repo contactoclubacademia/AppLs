@@ -12,14 +12,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import date, datetime
-
 import pandas as pd
 import streamlit as st
 
 from estilos import inject_css
-from database import (obtener_jugadores, obtener_categorias, obtener_profesor_de,
-                      guardar_pago, obtener_pagos)
-
+from database import (obtener_jugadores, obtener_categorias,
+                      guardar_pago, obtener_pagos, actualizar_pago, eliminar_pago)
 
 def render_pagos() -> None:
     """Modulo: registro y visualizacion de pagos de mensualidades (solo Administrador)."""
@@ -36,7 +34,7 @@ def render_pagos() -> None:
         return
 
     if "msg_pago_exito" in st.session_state:
-        st.success(st.session_state.msg_pago_exito)
+        st.success(st.session_state.msg_pago_exito, icon=":material/check_circle:")
         del st.session_state.msg_pago_exito
 
     tab_registro, tab_historial, tab_modificar = st.tabs(["Registrar Pago", "Historial de Pagos", "Modificar / Eliminar"])
@@ -55,7 +53,7 @@ def render_pagos() -> None:
                 jugadores_filtrados = [j for j in jugadores if j["categoria"] == cat_filtro]
 
             if not jugadores_filtrados:
-                st.warning("No hay jugadores en la categoria seleccionada.")
+                st.warning("No hay jugadores en la categoria seleccionada.", icon=":material/warning:")
                 opciones_jugador = []
             else:
                 opciones_jugador = [f"{j['nombre']} ({j['rut']}) - {j['categoria']}" for j in jugadores_filtrados]
@@ -93,15 +91,17 @@ def render_pagos() -> None:
                         )
                     with col_m2:
                         fecha_pago = st.date_input("Fecha de pago *", value=date.today())
+                        metodos_pago = ["Efectivo", "Transferencia", "Otro"]
+                        metodo_pago = st.selectbox("Método de pago *", metodos_pago)
 
                     guardar_btn = st.form_submit_button("REGISTRAR PAGO", width="stretch", type="primary")
 
                     if guardar_btn:
-                        from database import guardar_pago
                         pago_dict = {
                             "jugador_rut": jugador_sel["rut"],
                             "mes_correspondiente": mes_sel,
                             "monto": int(monto),
+                            "metodo": metodo_pago,
                             "fecha_pago": fecha_pago.strftime("%Y-%m-%d")
                         }
                         if guardar_pago(pago_dict):
@@ -110,13 +110,12 @@ def render_pagos() -> None:
                             st.cache_resource.clear()
                             st.rerun()
                         else:
-                            st.error("Ocurrio un error al registrar el pago.")
+                            st.error("Ocurrio un error al registrar el pago.", icon=":material/error:")
             else:
                 st.info("No hay jugadores elegibles para registro de pagos en este filtro.")
 
     with tab_historial:
         st.subheader(":material/history: Historial completo de pagos")
-        from database import obtener_pagos
         pagos_lista = obtener_pagos()
         if not pagos_lista:
             st.info("Aun no se han registrado pagos en el sistema.")
@@ -124,27 +123,62 @@ def render_pagos() -> None:
             with st.container(border=True):
                 st.subheader(":material/filter_list: Filtros")
                 lista_categorias = obtener_categorias()
-                filtro_hist_cat = st.selectbox("Filtrar historial por categoria", ["Todas"] + lista_categorias, key="pago_hist_cat_filtro")
-
+                
+                cf1, cf2 = st.columns(2)
+                with cf1:
+                    filtro_hist_cat = st.selectbox("Filtrar historial por categoria", ["Todas"] + lista_categorias, key="pago_hist_cat_filtro")
+                
                 pagos_mostrar = pagos_lista
                 if filtro_hist_cat != "Todas":
-                    pagos_mostrar = [p for p in pagos_lista if p.get("categoria") == filtro_hist_cat]
+                    pagos_mostrar = [p for p in pagos_mostrar if p.get("categoria") == filtro_hist_cat]
+                
+                # Generar lista de jugadores únicos para el autocompletado
+                opciones_jugadores = sorted(list(set([f"{p.get('jugador_nombre', '')} - {p.get('jugador_rut', '')}" for p in pagos_mostrar])))
+
+                with cf2:
+                    buscador_jugador = st.selectbox(
+                        "Buscar Jugador (Autocompletado)", 
+                        options=opciones_jugadores,
+                        index=None,
+                        placeholder="Empieza a escribir un nombre o RUT...",
+                        key="pago_hist_buscar_autocomp"
+                    )
+
+                if buscador_jugador:
+                    pagos_mostrar = [
+                        p for p in pagos_mostrar 
+                        if f"{p.get('jugador_nombre', '')} - {p.get('jugador_rut', '')}" == buscador_jugador
+                    ]
 
                 if not pagos_mostrar:
-                    st.warning("No hay pagos registrados para la categoria seleccionada.")
+                    st.warning("No hay pagos registrados que coincidan con los filtros y la búsqueda actual.", icon=":material/warning:")
                 else:
                     with st.container(border=True):
                         st.subheader(":material/list: Listado de Pagos")
                         df_pagos = pd.DataFrame(pagos_mostrar)[
-                            ["jugador_nombre", "jugador_rut", "categoria", "mes_correspondiente", "monto", "fecha_pago"]
+                            ["jugador_nombre", "jugador_rut", "categoria", "mes_correspondiente", "monto", "metodo", "fecha_pago"]
                         ]
                         df_pagos.columns = [
-                            "Jugador", "RUT", "Categoria", "Mes", "Monto ($)", "Fecha Pago"
+                            "Jugador", "RUT", "Categoria", "Mes", "Monto ($)", "Método", "Fecha Pago"
                         ]
 
                         df_pagos["Monto ($)"] = df_pagos["Monto ($)"].apply(lambda x: f"${x:,}")
 
                         st.dataframe(df_pagos, width="stretch", hide_index=True)
+                        
+                        import io
+                        excel_buffer = io.BytesIO()
+                        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                            df_pagos.to_excel(writer, index=False, sheet_name="Pagos")
+                        
+                        st.write("")
+                        st.download_button(
+                            label=":material/download: Descargar Pagos en Excel",
+                            data=excel_buffer.getvalue(),
+                            file_name="Historial_Pagos.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            type="secondary"
+                        )
 
                         total_recaudado = sum(p["monto"] for p in pagos_mostrar)
                         st.markdown(
@@ -158,7 +192,6 @@ def render_pagos() -> None:
 
     with tab_modificar:
         st.subheader(":material/edit: Buscar y Modificar Pagos")
-        from database import obtener_pagos, actualizar_pago, eliminar_pago
         pagos_lista_mod = obtener_pagos()
         if not pagos_lista_mod:
             st.info("Aun no hay pagos registrados para modificar.")
@@ -191,9 +224,13 @@ def render_pagos() -> None:
                             except:
                                 default_date = date.today()
                             nueva_fecha = st.date_input("Fecha de pago *", value=default_date)
+                            
+                            metodos_pago = ["Efectivo", "Transferencia", "Otro"]
+                            idx_metodo = metodos_pago.index(p_data.get("metodo", "Efectivo")) if p_data.get("metodo", "Efectivo") in metodos_pago else 0
+                            nuevo_metodo = st.selectbox("Método de pago *", metodos_pago, index=idx_metodo)
 
                         st.markdown("---")
-                        st.write("⚠️ **Confirmación requerida**")
+                        st.write(":material/warning: **Confirmación requerida**")
                         confirmar = st.checkbox("Confirmo que deseo modificar o eliminar este registro de pago", key=f"conf_{p_data['id']}")
                         
                         c5, c6 = st.columns(2)
@@ -204,11 +241,12 @@ def render_pagos() -> None:
                             
                         if btn_guardar:
                             if not confirmar:
-                                st.error("❌ Debes marcar la casilla de confirmación para guardar.")
+                                st.error("Debes marcar la casilla de confirmación para guardar.", icon=":material/error:")
                             else:
                                 nuevos_datos = {
                                     "mes_correspondiente": nuevo_mes,
                                     "monto": int(nuevo_monto),
+                                    "metodo": nuevo_metodo,
                                     "fecha_pago": nueva_fecha.strftime("%Y-%m-%d")
                                 }
                                 if actualizar_pago(p_data["id"], nuevos_datos):
@@ -219,7 +257,7 @@ def render_pagos() -> None:
                                     
                         if btn_eliminar:
                             if not confirmar:
-                                st.error("❌ Debes marcar la casilla de confirmación para eliminar el pago.")
+                                st.error("Debes marcar la casilla de confirmación para eliminar el pago.", icon=":material/error:")
                             else:
                                 if eliminar_pago(p_data["id"]):
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue eliminado del sistema."
