@@ -16,7 +16,7 @@ import streamlit as st
 
 from estilos import inject_css
 from database import (obtener_jugadores, obtener_categorias, obtener_profesor_de,
-                      actualizar_jugador, eliminar_jugador)
+                      actualizar_jugador, eliminar_jugador, activar_jugador)
 
 
 def render_plantillas() -> None:
@@ -49,29 +49,42 @@ def render_plantillas() -> None:
             fecha_corta = fecha_raw.split("T")[0] if "T" in fecha_raw else fecha_raw.split(" ")[0]
             m3.metric("Ultimo registro", fecha_corta)
 
-            filtro_categoria = st.selectbox("Filtrar por categoria", ["Todas"] + categorias)
+            c_f1, c_f2 = st.columns(2)
+            with c_f1:
+                filtro_estado = st.selectbox("Estado", ["Activos", "Inactivos", "Todos"])
+            with c_f2:
+                filtro_categoria = st.selectbox("Filtrar por categoria", ["Todas"] + categorias)
+
+        jugadores_tabla = jugadores_todos
+        if filtro_estado == "Activos":
+            jugadores_tabla = [j for j in jugadores_tabla if j.get("estado") != "Inactivo"]
+        elif filtro_estado == "Inactivos":
+            jugadores_tabla = [j for j in jugadores_tabla if j.get("estado") == "Inactivo"]
 
         if filtro_categoria != "Todas":
-            jugadores_tabla = obtener_jugadores(filtro_categoria)
+            jugadores_tabla = [j for j in jugadores_tabla if j.get("categoria") == filtro_categoria]
             profesor_cat = obtener_profesor_de(filtro_categoria)
             st.caption(f"Profesor a cargo de {filtro_categoria}: {profesor_cat or 'Sin asignar'}")
-        else:
-            jugadores_tabla = jugadores_todos
 
         if not jugadores_tabla:
-            st.warning("No hay jugadores registrados en esta categoria todavia.")
+            st.warning("No hay jugadores registrados con estos filtros todavia.")
         else:
             with st.container(border=True):
                 st.subheader(":material/list: Listado de Jugadores")
                 df = pd.DataFrame(jugadores_tabla)
                 
-                columnas_db = ["nombre", "rut", "categoria", "apoderado_nombre", "apoderado_telefono", "fecha_registro"]
+                columnas_db = ["nombre", "rut", "categoria", "estado", "apoderado_nombre", "apoderado_telefono", "fecha_registro"]
                 df = df[[col for col in columnas_db if col in df.columns]]
+                
+                if "estado" in df.columns:
+                    df["estado"] = df["estado"].fillna("Activo")
+                else:
+                    df["estado"] = "Activo"
                 
                 if "fecha_registro" in df.columns:
                     df["fecha_registro"] = df["fecha_registro"].apply(lambda x: str(x).split("T")[0] if "T" in str(x) else str(x).split(" ")[0])
 
-                df.columns = ["Nombre", "RUT", "Categoria", "Apoderado", "Telefono Apoderado", "Fecha Registro"]
+                df.columns = ["Nombre", "RUT", "Categoria", "Estado", "Apoderado", "Telefono Apoderado", "Fecha Registro"]
 
                 st.dataframe(df, width="stretch", hide_index=True)
                 
@@ -135,8 +148,16 @@ def render_plantillas() -> None:
                     c5, c6 = st.columns(2)
                     with c5:
                         btn_guardar = st.form_submit_button("Guardar Cambios", type="primary", width="stretch")
+                    
+                    es_inactivo = j_data.get("estado") == "Inactivo"
+                    
                     with c6:
-                        btn_eliminar = st.form_submit_button("Eliminar Jugador", type="secondary", width="stretch")
+                        if es_inactivo:
+                            btn_activar = st.form_submit_button("Restaurar (Activar)", type="primary", width="stretch")
+                            btn_eliminar = False
+                        else:
+                            btn_eliminar = st.form_submit_button("Dar de Baja (Inactivar)", type="secondary", width="stretch")
+                            btn_activar = False
                         
                     if btn_guardar:
                         nuevos_datos = {
@@ -160,7 +181,14 @@ def render_plantillas() -> None:
                             
                     if btn_eliminar:
                         if eliminar_jugador(j_data["rut"]):
-                            st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} eliminado del sistema."
+                            st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido dado de baja."
+                            st.cache_data.clear()
+                            st.cache_resource.clear()
+                            st.rerun()
+                            
+                    if btn_activar:
+                        if activar_jugador(j_data["rut"], nueva_categoria):
+                            st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido restaurado exitosamente."
                             st.cache_data.clear()
                             st.cache_resource.clear()
                             st.rerun()

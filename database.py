@@ -56,13 +56,7 @@ def get_supabase() -> Client:
         st.error(f"❌ No se pudo inicializar Supabase: {e}")
         st.stop()
 
-# Credenciales de autenticación demo (exclusivas para el login; NO son datos
-# de negocio y no interactúan con las tablas de Supabase). Migrar esto a
-# Supabase Auth es una tarea independiente y fuera del alcance de este fix.
-USUARIOS_DEMO = {
-    "admin": {"password": "admin123", "rol": "Administrador", "nombre": "Administrador"},
-    "profe": {"password": "profe123", "rol": "Profesor/Entrenador", "nombre": "Profesor"},
-}
+# Eliminado USUARIOS_DEMO, ahora usamos la tabla usuarios de Supabase
 
 
 # =============================================================================
@@ -96,16 +90,37 @@ def actualizar_jugador(rut: str, datos: dict) -> bool:
 
 def eliminar_jugador(rut: str) -> bool:
     """
-    Elimina un jugador de Supabase por su RUT.
+    Da de baja a un jugador (borrado lógico), cambiando su estado a 'Inactivo' y
+    removiéndolo de su categoría.
     """
     try:
-        res = get_supabase().table("jugadores").delete().eq("rut", rut).execute()
+        res = get_supabase().table("jugadores").update({
+            "estado": "Inactivo",
+            "categoria": None
+        }).eq("rut", rut).execute()
         if not res.data:
-            st.error("❌ No se pudo eliminar (0 filas afectadas).")
+            st.error("❌ No se pudo dar de baja al jugador.")
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al eliminar jugador: {e}")
+        st.error(f"❌ Error al dar de baja jugador: {e}")
+        return False
+
+def activar_jugador(rut: str, categoria: str) -> bool:
+    """
+    Restaura a un jugador inactivo, asignándole una categoría.
+    """
+    try:
+        res = get_supabase().table("jugadores").update({
+            "estado": "Activo",
+            "categoria": categoria
+        }).eq("rut", rut).execute()
+        if not res.data:
+            st.error("❌ No se pudo activar al jugador.")
+            return False
+        return True
+    except Exception as e:
+        st.error(f"❌ Error al activar jugador: {e}")
         return False
 
 
@@ -411,15 +426,66 @@ def obtener_pagos(jugador_rut: Optional[str] = None) -> list:
 
 
 # =============================================================================
-# AUTENTICACIÓN (Login demo — no interactúa con las tablas de datos)
+# AUTENTICACIÓN Y GESTIÓN DE USUARIOS
 # =============================================================================
 
 def autenticar_usuario(username: str, password: str) -> Optional[dict]:
     """
-    Valida credenciales contra el diccionario de credenciales demo.
-    Al usar la llave maestra (service_role), ya no dependemos de Supabase Auth.
+    Valida credenciales contra la tabla usuarios en Supabase.
     """
-    usuario = USUARIOS_DEMO.get(username)
-    if usuario and usuario["password"] == password:
-        return {"username": username, "rol": usuario["rol"], "nombre": usuario["nombre"]}
+    try:
+        response = get_supabase().table("usuarios").select("*").eq("username", username).execute()
+        if response.data and len(response.data) > 0:
+            usuario = response.data[0]
+            if usuario.get("password") == password:
+                return {
+                    "username": usuario["username"],
+                    "rol": usuario["rol"],
+                    "nombre": usuario["nombre"],
+                    "permisos": usuario.get("permisos") or []
+                }
+    except Exception as e:
+        st.error(f"❌ Error de autenticación en la BD: {e}")
     return None
+
+def obtener_usuarios() -> list:
+    """Retorna la lista de todos los usuarios registrados."""
+    try:
+        response = get_supabase().table("usuarios").select("*").order("username").execute()
+        return response.data if response.data else []
+    except Exception as e:
+        st.error(f"❌ Error al obtener usuarios: {e}")
+        return []
+
+def crear_usuario(datos: dict) -> bool:
+    """Crea un nuevo usuario."""
+    try:
+        get_supabase().table("usuarios").insert(datos).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Error al crear usuario: {e}")
+        return False
+
+def actualizar_usuario(username: str, datos: dict) -> bool:
+    """Actualiza datos (y/o permisos) de un usuario."""
+    try:
+        res = get_supabase().table("usuarios").update(datos).eq("username", username).execute()
+        if not res.data:
+            st.error("❌ No se pudo actualizar el usuario.")
+            return False
+        return True
+    except Exception as e:
+        st.error(f"❌ Error al actualizar usuario: {e}")
+        return False
+
+def eliminar_usuario(username: str) -> bool:
+    """Elimina un usuario de la base de datos."""
+    try:
+        res = get_supabase().table("usuarios").delete().eq("username", username).execute()
+        if not res.data:
+            st.error("❌ No se pudo eliminar el usuario.")
+            return False
+        return True
+    except Exception as e:
+        st.error(f"❌ Error al eliminar usuario: {e}")
+        return False

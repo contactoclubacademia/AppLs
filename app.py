@@ -101,6 +101,7 @@ def _route(seleccion: str) -> None:
         "Control de Asistencia": ("pages.asistencia", "render_asistencia"),
         "Categorias": ("pages.categorias", "render_categorias"),
         "Pagos": ("pages.pagos", "render_pagos"),
+        "Administración": ("pages.administracion", "render_administracion"),
     }
     if seleccion in routes:
         module_path, func_name = routes[seleccion]
@@ -111,9 +112,6 @@ def _route(seleccion: str) -> None:
 def render_sidebar() -> str:
     """Renderiza el menu lateral segun el rol del usuario. Retorna la opcion elegida."""
     rol = st.session_state.user["rol"]
-
-    if "current_page" not in st.session_state:
-        st.session_state.current_page = "Registrar Jugador" if rol == "Administrador" else "Control de Asistencia"
 
     with st.sidebar:
         st.markdown(
@@ -127,15 +125,36 @@ def render_sidebar() -> str:
             unsafe_allow_html=True,
         )
 
+        opciones_disponibles = st.session_state.user.get("permisos") or []
+        
+        # Diccionario maestro de iconos
+        iconos_maestros = {
+            "Registrar Jugador": "person-plus-fill",
+            "Plantillas": "table",
+            "Control de Asistencia": "calendar-check",
+            "Categorias": "diagram-3",
+            "Pagos": "cash-coin",
+            "Administración": "shield-lock-fill"
+        }
+        
         if rol == "Administrador":
-            opciones = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos"]
-            iconos = ["person-plus-fill", "table", "calendar-check", "diagram-3", "cash-coin"]
+            # El administrador ve todo, o forzamos sus opciones
+            opciones = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos", "Administración"]
         else:
-            opciones = ["Control de Asistencia"]
-            iconos = ["calendar-check"]
+            opciones = opciones_disponibles
+            if not opciones:
+                opciones = ["Control de Asistencia"] # Fallback
 
-        # Validacion de seguridad (evita el ValueError si el estado se corrompe)
-        if st.session_state.current_page not in opciones:
+        # Asegurarse de no mostrar opciones que no esten en el diccionario maestro o rutas (por si un nombre esta mal)
+        opciones = [opt for opt in opciones if opt in iconos_maestros]
+        
+        if not opciones:
+            st.error("Tu usuario no tiene módulos asignados.")
+            return None
+
+        iconos = [iconos_maestros.get(op, "circle") for op in opciones]
+
+        if "current_page" not in st.session_state or st.session_state.current_page not in opciones:
             st.session_state.current_page = opciones[0]
 
         seleccion = option_menu(
