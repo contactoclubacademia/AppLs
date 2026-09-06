@@ -24,7 +24,6 @@ def inject_css() -> None:
         [data-testid="stToolbar"] {visibility: hidden; height: 0;}
         [data-testid="stDecoration"] {visibility: hidden; height: 0;}
         [data-testid="stStatusWidget"] {visibility: hidden; height: 0;}
-        [data-testid="stStatusWidget"] {visibility: hidden; height: 0;}
 
         /* -------- FIX: flechita para abrir/cerrar el sidebar --------
            `visibility` se hereda en CSS: al ocultar stToolbar/stDecoration
@@ -294,6 +293,25 @@ def inject_css() -> None:
             .sidebar-brand { font-size: 16px; }
         }
 
+
+        /* ==================== STATS CARDS ==================== */
+        .stats-card {
+            background-color: #FFFFFF; padding: 15px; border-radius: 8px;
+            border: 1px solid #E2E4E8; margin-top: 20px;
+        }
+        .stats-card h4 { margin-top: 0; color: #1A1A1A; }
+        .stats-row {
+            display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+        }
+        .stats-item {
+            display: flex; align-items: center; gap: 8px; font-size: 16px;
+        }
+        .total-recaudado {
+            background-color: #FFFFFF; padding: 12px; border-radius: 8px;
+            border: 1px solid #E2E4E8; text-align: right; font-weight: bold;
+            font-size: 16px; margin-top: 15px; color: #1A1A1A;
+        }
+        .total-recaudado span { color: #C8102E; }
 
         </style>
         """,

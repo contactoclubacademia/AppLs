@@ -7,9 +7,6 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
@@ -52,9 +49,4 @@ def render_login() -> None:
                         st.session_state.user = usuario
                         st.rerun()
                     else:
-                        st.error("Usuario o contrasena incorrectos.")
-
-        st.markdown(
-            '<p class="login-hint">Usuarios demo &nbsp;·&nbsp; admin / admin123 &nbsp;·&nbsp; profe / profe123</p>',
-            unsafe_allow_html=True,
-        )
+                        st.error("Usuario o contrasena incorrectos.")

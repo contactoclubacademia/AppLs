@@ -7,9 +7,6 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import re
 from datetime import date, datetime
@@ -34,10 +31,14 @@ def validar_formato_rut(rut: str) -> bool:
 def render_registro() -> None:
     """Modulo: alta de un nuevo jugador y su apoderado (solo Administrador)."""
 
-    from estilos import inject_css
-    from database import obtener_categorias, obtener_profesor_de, guardar_jugador
-
     inject_css()
+
+    # Verificación de permisos
+    permisos = st.session_state.user.get("permisos") or []
+    rol = st.session_state.user.get("rol")
+    if rol != "Administrador" and "Registrar Jugador" not in permisos:
+        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+        return
 
     st.title(":material/person_add: Registrar Nuevo Jugador")
 

@@ -1,5 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
+import hashlib
+import secrets
 
 import streamlit as st
 from supabase import create_client, Client
@@ -53,7 +55,7 @@ def get_supabase() -> Client:
     try:
         return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        st.error(f"❌ No se pudo inicializar Supabase: {e}")
+        st.error(f"No se pudo inicializar Supabase: {e}")
         st.stop()
 
 # Eliminado USUARIOS_DEMO, ahora usamos la tabla usuarios de Supabase
@@ -71,7 +73,7 @@ def guardar_jugador(jugador: dict) -> bool:
         get_supabase().table("jugadores").insert(jugador).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Error de Supabase al guardar jugador: {e}")
+        st.error(f"Error de Supabase al guardar jugador: {e}")
         return False
 
 def actualizar_jugador(rut: str, datos: dict) -> bool:
@@ -85,7 +87,7 @@ def actualizar_jugador(rut: str, datos: dict) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al actualizar jugador: {e}")
+        st.error(f"Error al actualizar jugador: {e}")
         return False
 
 def eliminar_jugador(rut: str) -> bool:
@@ -103,7 +105,7 @@ def eliminar_jugador(rut: str) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al dar de baja jugador: {e}")
+        st.error(f"Error al dar de baja jugador: {e}")
         return False
 
 def activar_jugador(rut: str, categoria: str) -> bool:
@@ -120,10 +122,11 @@ def activar_jugador(rut: str, categoria: str) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al activar jugador: {e}")
+        st.error(f"Error al activar jugador: {e}")
         return False
 
 
+@st.cache_data(ttl=60)
 def obtener_jugadores(categoria: Optional[str] = None) -> list:
     """
     Retorna la lista de jugadores desde Supabase, opcionalmente filtrados por categoría.
@@ -135,7 +138,7 @@ def obtener_jugadores(categoria: Optional[str] = None) -> list:
         response = query.execute()
         return response.data if response.data else []
     except Exception as e:
-        st.error(f"❌ Error de Supabase al obtener jugadores: {e}")
+        st.error(f"Error de Supabase al obtener jugadores: {e}")
         return []
 
 
@@ -143,6 +146,7 @@ def obtener_jugadores(categoria: Optional[str] = None) -> list:
 # CAPA DE DATOS - CATEGORÍAS (100% Supabase)
 # =============================================================================
 
+@st.cache_data(ttl=60)
 def obtener_categorias_config() -> list:
     """
     Retorna la configuración completa de categorías haciendo un select("*")
@@ -152,7 +156,7 @@ def obtener_categorias_config() -> list:
         response = get_supabase().table("categorias").select("*").order("nombre").execute()
         return response.data if response.data else []
     except Exception as e:
-        st.error(f"❌ Error de Supabase al obtener categorías: {e}")
+        st.error(f"Error de Supabase al obtener categorías: {e}")
         return []
 
 
@@ -184,7 +188,7 @@ def crear_categoria(nombre: str, profesor: str = "") -> bool:
     try:
         existente = get_supabase().table("categorias").select("nombre").eq("nombre", nombre).execute()
     except Exception as e:
-        st.error(f"❌ Error de Supabase al verificar duplicados: {e}")
+        st.error(f"Error de Supabase al verificar duplicados: {e}")
         return False
 
     if existente.data and len(existente.data) > 0:
@@ -210,7 +214,7 @@ def crear_categoria(nombre: str, profesor: str = "") -> bool:
                 f"'categorias' para tu rol/clave actual. Detalle: {error_msg}"
             )
         else:
-            st.error(f"❌ Error de Supabase al crear categoría: {error_msg}")
+            st.error(f"Error de Supabase al crear categoría: {error_msg}")
         return False
 
 
@@ -229,7 +233,7 @@ def eliminar_categoria(nombre: str) -> bool:
         if "foreign key constraint" in error_msg or "23503" in error_msg:
             st.error("❌ No se puede eliminar la categoría porque tiene registros de asistencia asociados. Borra la asistencia primero o contacta al administrador.")
         else:
-            st.error(f"❌ Error de Supabase al eliminar categoría: {e}")
+            st.error(f"Error de Supabase al eliminar categoría: {e}")
         return False
 
 
@@ -243,7 +247,7 @@ def actualizar_profesor_categoria(nombre: str, profesor: str) -> bool:
         }).eq("nombre", nombre).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Error de Supabase al actualizar profesor de categoría: {e}")
+        st.error(f"Error de Supabase al actualizar profesor de categoría: {e}")
         return False
 
 
@@ -257,7 +261,7 @@ def obtener_profesor_de(categoria: str) -> str:
             return response.data[0].get("profesor", "")
         return ""
     except Exception as e:
-        st.error(f"❌ Error de Supabase al obtener profesor de la categoría: {e}")
+        st.error(f"Error de Supabase al obtener profesor de la categoría: {e}")
         return ""
 
 
@@ -276,24 +280,30 @@ def obtener_profesores_roster() -> list:
 
 def guardar_asistencia(fecha: str, categoria: str, registros: dict) -> bool:
     """
-    Guarda o actualiza la asistencia insertando/haciendo upsert de una fila
-    individual por cada jugador en la tabla 'asistencia'.
+    Guarda o actualiza la asistencia en batch (una sola llamada HTTP),
+    insertando/haciendo upsert de todas las filas de una vez.
     """
     try:
-        for rut, info in registros.items():
-            data_upsert = {
+        filas = [
+            {
                 "fecha": fecha,
                 "jugador_rut": rut,
                 "categoria": categoria,
                 "estado": info["estado"]
             }
-            get_supabase().table("asistencia").upsert(data_upsert, on_conflict="fecha,jugador_rut").execute()
+            for rut, info in registros.items()
+        ]
+        if filas:
+            get_supabase().table("asistencia").upsert(
+                filas, on_conflict="fecha,jugador_rut"
+            ).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Error de Supabase al guardar asistencia: {e}")
+        st.error(f"Error de Supabase al guardar asistencia: {e}", icon=":material/error:")
         return False
 
 
+@st.cache_data(ttl=60)
 def obtener_asistencia(fecha: str, categoria: str) -> dict:
     """
     Retorna la asistencia de una fecha y categoría específica convertida
@@ -320,6 +330,7 @@ def obtener_asistencia(fecha: str, categoria: str) -> dict:
         return {}
 
 
+@st.cache_data(ttl=60)
 def obtener_asistencia_general(categoria: Optional[str] = None) -> list:
     """
     Retorna el historial completo de asistencia, opcionalmente filtrado por categoría.
@@ -362,7 +373,7 @@ def guardar_pago(pago: dict) -> bool:
         get_supabase().table("pagos").insert(pago).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Error de Supabase al guardar pago: {e}")
+        st.error(f"Error de Supabase al guardar pago: {e}")
         return False
 
 
@@ -375,7 +386,7 @@ def actualizar_pago(id_pago: str, datos: dict) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al actualizar pago: {e}")
+        st.error(f"Error al actualizar pago: {e}")
         return False
 
 
@@ -388,10 +399,11 @@ def eliminar_pago(id_pago: str) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al eliminar pago: {e}")
+        st.error(f"Error al eliminar pago: {e}")
         return False
 
 
+@st.cache_data(ttl=60)
 def obtener_pagos(jugador_rut: Optional[str] = None) -> list:
     """
     Retorna los pagos registrados haciendo JOIN con la tabla 'jugadores'
@@ -421,7 +433,7 @@ def obtener_pagos(jugador_rut: Optional[str] = None) -> list:
                 
         return pagos_procesados
     except Exception as e:
-        st.error(f"❌ Error de Supabase al obtener pagos: {e}")
+        st.error(f"Error de Supabase al obtener pagos: {e}")
         return []
 
 
@@ -429,15 +441,42 @@ def obtener_pagos(jugador_rut: Optional[str] = None) -> list:
 # AUTENTICACIÓN Y GESTIÓN DE USUARIOS
 # =============================================================================
 
+def _hash_password(password: str, salt: str = None) -> tuple[str, str]:
+    """Hashea una contraseña con PBKDF2-SHA256. Retorna (hash, salt)."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    pw_hash = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000
+    ).hex()
+    return pw_hash, salt
+
+
+def _verify_password(password: str, stored_hash: str, salt: str) -> bool:
+    """Verifica una contraseña contra su hash almacenado."""
+    pw_hash, _ = _hash_password(password, salt)
+    return pw_hash == stored_hash
+
+
 def autenticar_usuario(username: str, password: str) -> Optional[dict]:
     """
     Valida credenciales contra la tabla usuarios en Supabase.
+    Soporta tanto passwords hasheados (con salt) como texto plano (legacy).
     """
     try:
         response = get_supabase().table("usuarios").select("*").eq("username", username).execute()
         if response.data and len(response.data) > 0:
             usuario = response.data[0]
-            if usuario.get("password") == password:
+            stored_pw = usuario.get("password", "")
+            salt = usuario.get("salt", "")
+            
+            # Si tiene salt, usar verificación con hash
+            if salt:
+                password_ok = _verify_password(password, stored_pw, salt)
+            else:
+                # Legacy: comparación directa (texto plano)
+                password_ok = (stored_pw == password)
+            
+            if password_ok:
                 return {
                     "username": usuario["username"],
                     "rol": usuario["rol"],
@@ -445,25 +484,31 @@ def autenticar_usuario(username: str, password: str) -> Optional[dict]:
                     "permisos": usuario.get("permisos") or []
                 }
     except Exception as e:
-        st.error(f"❌ Error de autenticación en la BD: {e}")
+        st.error(f"Error de autenticación en la BD: {e}", icon=":material/error:")
     return None
 
+@st.cache_data(ttl=60)
 def obtener_usuarios() -> list:
     """Retorna la lista de todos los usuarios registrados."""
     try:
         response = get_supabase().table("usuarios").select("*").order("username").execute()
         return response.data if response.data else []
     except Exception as e:
-        st.error(f"❌ Error al obtener usuarios: {e}")
+        st.error(f"Error al obtener usuarios: {e}")
         return []
 
 def crear_usuario(datos: dict) -> bool:
-    """Crea un nuevo usuario."""
+    """Crea un nuevo usuario con password hasheado."""
     try:
-        get_supabase().table("usuarios").insert(datos).execute()
+        # Hashear password antes de guardar
+        pw_hash, salt = _hash_password(datos["password"])
+        datos_guardado = datos.copy()
+        datos_guardado["password"] = pw_hash
+        datos_guardado["salt"] = salt
+        get_supabase().table("usuarios").insert(datos_guardado).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Error al crear usuario: {e}")
+        st.error(f"Error al crear usuario: {e}", icon=":material/error:")
         return False
 
 def actualizar_usuario(username: str, datos: dict) -> bool:
@@ -475,7 +520,7 @@ def actualizar_usuario(username: str, datos: dict) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al actualizar usuario: {e}")
+        st.error(f"Error al actualizar usuario: {e}")
         return False
 
 def eliminar_usuario(username: str) -> bool:
@@ -487,5 +532,5 @@ def eliminar_usuario(username: str) -> bool:
             return False
         return True
     except Exception as e:
-        st.error(f"❌ Error al eliminar usuario: {e}")
+        st.error(f"Error al eliminar usuario: {e}")
         return False

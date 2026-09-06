@@ -7,9 +7,9 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
 
-import sys
+
+import io
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import streamlit as st
@@ -22,6 +22,13 @@ from database import (obtener_jugadores, obtener_categorias, obtener_profesor_de
 def render_plantillas() -> None:
     """Modulo: listado general de jugadores inscritos (solo Administrador)."""
     inject_css()
+
+    # Verificación de permisos
+    permisos = st.session_state.user.get("permisos") or []
+    rol = st.session_state.user.get("rol")
+    if rol != "Administrador" and "Plantillas" not in permisos:
+        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+        return
 
     st.title(":material/table: Plantillas y Registros")
     
@@ -36,7 +43,6 @@ def render_plantillas() -> None:
 
     categorias = obtener_categorias()
 
-    import io
     tab1, tab2, tab3 = st.tabs(["Listado General", "Modificar Jugadores", "Carga Masiva (Excel)"])
 
     with tab1:
@@ -84,7 +90,15 @@ def render_plantillas() -> None:
                 if "fecha_registro" in df.columns:
                     df["fecha_registro"] = df["fecha_registro"].apply(lambda x: str(x).split("T")[0] if "T" in str(x) else str(x).split(" ")[0])
 
-                df.columns = ["Nombre", "RUT", "Categoria", "Estado", "Apoderado", "Telefono Apoderado", "Fecha Registro"]
+                df = df.rename(columns={
+                    "nombre": "Nombre",
+                    "rut": "RUT",
+                    "categoria": "Categoria",
+                    "estado": "Estado",
+                    "apoderado_nombre": "Apoderado",
+                    "apoderado_telefono": "Telefono Apoderado",
+                    "fecha_registro": "Fecha Registro"
+                })
 
                 st.dataframe(df, width="stretch", hide_index=True)
                 
@@ -176,21 +190,18 @@ def render_plantillas() -> None:
                         elif actualizar_jugador(j_data["rut"], nuevos_datos):
                             st.session_state.msg_jugador_exito = f"Datos de {nuevo_nombre} actualizados correctamente."
                             st.cache_data.clear()
-                            st.cache_resource.clear()
                             st.rerun()
                             
                     if btn_eliminar:
                         if eliminar_jugador(j_data["rut"]):
                             st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido dado de baja."
                             st.cache_data.clear()
-                            st.cache_resource.clear()
                             st.rerun()
                             
                     if btn_activar:
                         if activar_jugador(j_data["rut"], nueva_categoria):
                             st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido restaurado exitosamente."
                             st.cache_data.clear()
-                            st.cache_resource.clear()
                             st.rerun()
 
     with tab3:
@@ -279,8 +290,6 @@ def render_plantillas() -> None:
                                         
                             if exitosos > 0:
                                 st.success(f"Se guardaron {exitosos} jugadores correctamente.", icon=":material/check_circle:")
-                                st.cache_data.clear()
-                                st.cache_resource.clear()
                             if errores > 0:
                                 st.error(f"Hubo {errores} registros con errores (datos incompletos o jugador ya existe).", icon=":material/error:")
                     else:

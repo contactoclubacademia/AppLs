@@ -7,11 +7,9 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
+import io
 from datetime import date, datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -22,6 +20,13 @@ from database import (obtener_jugadores, obtener_categorias,
 def render_pagos() -> None:
     """Modulo: registro y visualizacion de pagos de mensualidades (solo Administrador)."""
     inject_css()
+
+    # Verificación de permisos
+    permisos = st.session_state.user.get("permisos") or []
+    rol = st.session_state.user.get("rol")
+    if rol != "Administrador" and "Pagos" not in permisos:
+        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+        return
 
     st.title(":material/attach_money: Registro de Pagos")
 
@@ -37,13 +42,16 @@ def render_pagos() -> None:
         st.success(st.session_state.msg_pago_exito, icon=":material/check_circle:")
         del st.session_state.msg_pago_exito
 
+    # Cargar datos una sola vez para todas las tabs
+    lista_categorias = obtener_categorias()
+    pagos_lista = obtener_pagos()
+
     tab_registro, tab_historial, tab_modificar = st.tabs(["Registrar Pago", "Historial de Pagos", "Modificar / Eliminar"])
 
     with tab_registro:
         with st.container(border=True):
             st.subheader(":material/add_circle: Ingresar nuevo pago")
 
-            lista_categorias = obtener_categorias()
             c1, c2 = st.columns(2)
             with c1:
                 cat_filtro = st.selectbox("Filtrar por categoria para buscar jugador", ["Todas"] + lista_categorias, key="pago_cat_filtro")
@@ -107,7 +115,6 @@ def render_pagos() -> None:
                         if guardar_pago(pago_dict):
                             st.session_state.msg_pago_exito = f"Pago de ${monto:,} correspondiente a {mes_sel} para el jugador {jugador_sel['nombre']} registrado correctamente."
                             st.cache_data.clear()
-                            st.cache_resource.clear()
                             st.rerun()
                         else:
                             st.error("Ocurrio un error al registrar el pago.", icon=":material/error:")
@@ -116,13 +123,11 @@ def render_pagos() -> None:
 
     with tab_historial:
         st.subheader(":material/history: Historial completo de pagos")
-        pagos_lista = obtener_pagos()
         if not pagos_lista:
             st.info("Aun no se han registrado pagos en el sistema.")
         else:
             with st.container(border=True):
                 st.subheader(":material/filter_list: Filtros")
-                lista_categorias = obtener_categorias()
                 
                 cf1, cf2 = st.columns(2)
                 with cf1:
@@ -166,7 +171,6 @@ def render_pagos() -> None:
 
                         st.dataframe(df_pagos, width="stretch", hide_index=True)
                         
-                        import io
                         excel_buffer = io.BytesIO()
                         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                             df_pagos.to_excel(writer, index=False, sheet_name="Pagos")
@@ -183,8 +187,8 @@ def render_pagos() -> None:
                         total_recaudado = sum(p["monto"] for p in pagos_mostrar)
                         st.markdown(
                             f"""
-                            <div style="background-color: #FFFFFF; padding: 12px; border-radius: 8px; border: 1px solid #E2E4E8; text-align: right; font-weight: bold; font-size: 16px; margin-top: 15px; color: #1A1A1A;">
-                                Total Recaudado: <span style="color: #C8102E;">${total_recaudado:,}</span>
+                            <div class="total-recaudado">
+                                Total Recaudado: <span>${total_recaudado:,}</span>
                             </div>
                             """,
                             unsafe_allow_html=True
@@ -192,11 +196,10 @@ def render_pagos() -> None:
 
     with tab_modificar:
         st.subheader(":material/edit: Buscar y Modificar Pagos")
-        pagos_lista_mod = obtener_pagos()
-        if not pagos_lista_mod:
+        if not pagos_lista:
             st.info("Aun no hay pagos registrados para modificar.")
         else:
-            opciones_pagos = {f"{p['jugador_nombre']} - {p['mes_correspondiente']} ({str(p['fecha_pago']).split('T')[0]}) - ${p['monto']:,}": p for p in pagos_lista_mod}
+            opciones_pagos = {f"{p['jugador_nombre']} - {p['mes_correspondiente']} ({str(p['fecha_pago']).split('T')[0]}) - ${p['monto']:,}": p for p in pagos_lista}
             pago_sel_str = st.selectbox(
                 "Buscar Pago a Modificar", 
                 options=list(opciones_pagos.keys()), 
@@ -221,7 +224,7 @@ def render_pagos() -> None:
                         with col_m2:
                             try:
                                 default_date = datetime.strptime(str(p_data["fecha_pago"]).split(" ")[0].split("T")[0], "%Y-%m-%d").date()
-                            except:
+                            except (ValueError, TypeError):
                                 default_date = date.today()
                             nueva_fecha = st.date_input("Fecha de pago *", value=default_date)
                             
@@ -252,7 +255,6 @@ def render_pagos() -> None:
                                 if actualizar_pago(p_data["id"], nuevos_datos):
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue actualizado correctamente."
                                     st.cache_data.clear()
-                                    st.cache_resource.clear()
                                     st.rerun()
                                     
                         if btn_eliminar:
@@ -262,5 +264,4 @@ def render_pagos() -> None:
                                 if eliminar_pago(p_data["id"]):
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue eliminado del sistema."
                                     st.cache_data.clear()
-                                    st.cache_resource.clear()
                                     st.rerun()

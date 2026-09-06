@@ -7,9 +7,6 @@ Solo accesible por Administradores.
 =============================================================================
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 import pandas as pd
@@ -101,6 +98,7 @@ def render_administracion() -> None:
                         }
                         if crear_usuario(nuevo):
                             st.session_state.msg_admin = f"Cuenta '{n_user}' creada con éxito."
+                            st.cache_data.clear()
                             st.rerun()
 
         with c_lista:
@@ -131,6 +129,7 @@ def render_administracion() -> None:
                 if st.button("Eliminar Cuenta Seleccionada", type="secondary") and usr_eliminar != "-- Seleccionar --":
                     if eliminar_usuario(usr_eliminar):
                         st.session_state.msg_admin = f"Usuario '{usr_eliminar}' eliminado."
+                        st.cache_data.clear()
                         st.rerun()
 
     with tab3:
@@ -165,4 +164,5 @@ def render_administracion() -> None:
                     if st.form_submit_button("Guardar Permisos", type="primary"):
                         if actualizar_usuario(usr_sel, {"permisos": nuevos_permisos}):
                             st.session_state.msg_admin = f"Permisos actualizados para '{usr_sel}'."
+                            st.cache_data.clear()
                             st.rerun()

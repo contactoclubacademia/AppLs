@@ -112,12 +112,27 @@ Key functions:
 
 ```sql
 categorias(nombre PK, profesor, created_at)
-jugadores(rut PK, nombre, anio_nacimiento, categoria FK, posicion, apoderado_*, fecha_registro)
+jugadores(rut PK, nombre, anio_nacimiento, categoria FK, estado, apoderado_nombre, apoderado_telefono, apoderado_rut, apoderado_correo, telefono_emergencia, fecha_registro)
 asistencia(id, fecha, categoria FK, jugador_rut FK, estado, created_at, UNIQUE(fecha, jugador_rut))
 pagos(id UUID PK, jugador_rut FK, mes_correspondiente, monto, fecha_pago, metodo, observaciones, created_at)
+usuarios(id UUID PK, username, password, salt, rol, nombre, permisos, created_at, UNIQUE(username))
 ```
 
-RLS policies allow `anon` SELECT, `authenticated` ALL.
+### Base de Datos — Optimizaciones (Fase 6)
+Para asegurar el rendimiento óptimo y seguridad a largo plazo, se recomiendan las siguientes configuraciones en Supabase:
+
+1. **Índices de Rendimiento (Verificar/Crear):**
+   - `CREATE INDEX idx_jugadores_categoria ON jugadores(categoria);`
+   - `CREATE INDEX idx_asistencia_fecha_cat ON asistencia(fecha, categoria);`
+   - `CREATE INDEX idx_pagos_rut_fecha ON pagos(jugador_rut, fecha_pago);`
+
+2. **Políticas de Seguridad (RLS):**
+   - Actualmente RLS permite `anon` SELECT y `authenticated` ALL.
+   - **Recomendación:** Activar RLS estricto y validar roles desde el JWT en Supabase para evitar accesos no autorizados si la API key anónima es expuesta.
+
+3. **Migración de Autenticación:**
+   - Actualmente se usa una tabla personalizada `usuarios` con hash PBKDF2 (SHA-256).
+   - **Recomendación:** Considerar migrar a **Supabase Auth (GoTrue)** en el futuro para delegar la seguridad, manejo de sesiones, reseteo de contraseñas y MFA a la plataforma nativa.
 
 ## Testing / Verification
 

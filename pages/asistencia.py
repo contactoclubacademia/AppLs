@@ -7,21 +7,32 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 =============================================================================
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
+import io
 from datetime import date
+
+import pandas as pd
 import streamlit as st
 
 from estilos import inject_css
-from database import obtener_categorias, obtener_jugadores, obtener_asistencia, guardar_asistencia
+from database import (obtener_categorias, obtener_jugadores, obtener_asistencia,
+                      guardar_asistencia, obtener_asistencia_general)
 
 def render_asistencia() -> None:
     """Modulo: toma de asistencia por fecha y categoria (Administrador y Profesor)."""
     inject_css()
 
+    # Verificación de permisos
+    permisos = st.session_state.user.get("permisos") or []
+    rol = st.session_state.user.get("rol")
+    if rol != "Administrador" and "Control de Asistencia" not in permisos:
+        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+        return
+
     st.title(":material/calendar_check: Control de Asistencia")
+
+    if "msg_asistencia_exito" in st.session_state:
+        st.success(st.session_state.msg_asistencia_exito, icon=":material/check_circle:")
+        del st.session_state.msg_asistencia_exito
 
     tab1, tab2 = st.tabs(["Tomar Asistencia", "Historial de Asistencia"])
 
@@ -79,19 +90,13 @@ def render_asistencia() -> None:
             
             if guardar_btn:
                 if guardar_asistencia(fecha_sel.strftime("%Y-%m-%d"), cat_sel, nuevos_registros):
-                    st.success(f"Asistencia del {fecha_sel.strftime('%d/%m/%Y')} para {cat_sel} guardada correctamente.", icon=":material/check_circle:")
+                    st.session_state.msg_asistencia_exito = f"Asistencia del {fecha_sel.strftime('%d/%m/%Y')} para {cat_sel} guardada correctamente."
                     st.cache_data.clear()
-                    st.cache_resource.clear()
-                    # small wait so user sees success message
-                    import time
-                    time.sleep(1.5)
                     st.rerun()
 
     with tab2:
         with st.container(border=True):
             st.subheader(":material/history: Historial y Estadísticas Mensuales")
-            from database import obtener_asistencia_general
-            import pandas as pd
             
             historial_completo = obtener_asistencia_general()
             if not historial_completo:
@@ -142,7 +147,6 @@ def render_asistencia() -> None:
                         st.write("")
                         st.dataframe(df_historial, width="stretch", hide_index=True)
                         
-                        import io
                         excel_buffer = io.BytesIO()
                         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                             df_historial.to_excel(writer, index=False, sheet_name="Asistencia")
@@ -170,19 +174,19 @@ def render_asistencia() -> None:
                         
                         st.markdown(
                             f"""
-                            <div style="background-color: #FFFFFF; padding: 15px; border-radius: 8px; border: 1px solid #E2E4E8; margin-top: 20px;">
-                                <h4 style="margin-top: 0; color: #1A1A1A;">Estadísticas del Mes ({mes_str} {anio_str})</h4>
-                                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+                            <div class="stats-card">
+                                <h4>Estadísticas del Mes ({mes_str} {anio_str})</h4>
+                                <div class="stats-row">
+                                    <div class="stats-item">
                                         {svg_presente} <b>Presentes:</b> {total_presentes}
                                     </div>
-                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+                                    <div class="stats-item">
                                         {svg_ausente} <b>Ausentes:</b> {total_ausentes}
                                     </div>
-                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+                                    <div class="stats-item">
                                         {svg_justif} <b>Justificados:</b> {total_justificados}
                                     </div>
-                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 16px; color: #17a2b8;">
+                                    <div class="stats-item" style="color: #17a2b8;">
                                         {svg_tasa} <b>Tasa de Asistencia:</b> {tasa_asistencia:.1f}%
                                     </div>
                                 </div>

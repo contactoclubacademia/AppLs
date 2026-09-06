@@ -50,8 +50,6 @@ def _init_session_state() -> None:
     defaults = {
         "authenticated": False,
         "user": None,
-        "_css_injected": False,
-        "_css_auth_hidden": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -59,29 +57,9 @@ def _init_session_state() -> None:
 
 
 def _inject_global_css() -> None:
-    """CSS global UNA sola vez."""
-    if not st.session_state._css_injected:
-        from estilos import inject_css
-        inject_css()
+    """CSS global en cada rerun (Streamlit reconstruye el DOM)."""
+    inject_css()
 
-        # CSS para ocultar controles de Streamlit
-        st.markdown("""
-            <style>
-                [data-testid="collapsedControl"] { display: none !important; }
-            </style>
-        """, unsafe_allow_html=True)
-        st.session_state._css_injected = True
-
-
-def _inject_conditional_css() -> None:
-    """CSS condicional SOLO si cambia estado auth."""
-    if not st.session_state.authenticated and not st.session_state._css_auth_hidden:
-        st.markdown("""
-            <style>[data-testid="stSidebar"] { display: none !important; }</style>
-        """, unsafe_allow_html=True)
-        st.session_state._css_auth_hidden = True
-    elif st.session_state.authenticated and st.session_state._css_auth_hidden:
-        st.session_state._css_auth_hidden = False
 
 
 def _render_topbar() -> None:
@@ -216,27 +194,8 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
-    # Ocultar el control de colapso (flechita) SOLO en PC, en celular lo necesitamos para abrir el menú nativo
-    st.markdown(
-        """
-        <style>
-            @media (min-width: 769px) {
-                [data-testid="collapsedControl"] { display: none !important; }
-            }
-            @media (max-width: 768px) {
-                [data-testid="collapsedControl"] { 
-                    display: flex !important; 
-                    z-index: 999999 !important; 
-                }
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     _init_session_state()
     _inject_global_css()
-    _inject_conditional_css()
 
     if not st.session_state.authenticated:
         # Ocultar sidebar SOLO en pagina de login
