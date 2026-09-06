@@ -50,3 +50,7 @@ def render_login() -> None:
                         st.rerun()
                     else:
                         st.error("Usuario o contrasena incorrectos.")
+
+if __name__ == '__main__':
+    import streamlit as st
+    st.switch_page('app.py')

@@ -13,7 +13,7 @@ import streamlit as st
 from estilos import inject_css
 from database import (obtener_categorias_config, obtener_usuarios,
                       crear_categoria, actualizar_profesor_categoria,
-                      eliminar_categoria, obtener_jugadores)
+                      eliminar_categoria, obtener_jugadores, desvincular_jugadores_categoria)
 
 
 def render_categorias() -> None:
@@ -115,15 +115,47 @@ def render_categorias() -> None:
 
                 # Botón eliminar
                 st.write("")
-                if st.button("Eliminar categoria", key=f"eliminar_{cat['nombre']}", use_container_width=True, type="secondary"):
-                    # Verificar si hay jugadores en la categoria antes de intentar borrar
-                    jugadores_en_cat = obtener_jugadores(cat["nombre"])
-                    if jugadores_en_cat:
-                        st.error(f"No se puede eliminar: hay {len(jugadores_en_cat)} jugador(es) en esta categoría.", icon=":material/error:")
-                    else:
-                        if eliminar_categoria(cat["nombre"]):
-                            st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada con éxito."
-                            st.cache_data.clear()
+                # Estado para la confirmación de eliminación
+                if f"confirmar_eliminar_{cat['nombre']}" not in st.session_state:
+                    st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = False
+
+                if not st.session_state[f"confirmar_eliminar_{cat['nombre']}"]:
+                    if st.button("Eliminar categoria", key=f"eliminar_{cat['nombre']}", use_container_width=True, type="secondary"):
+                        jugadores_en_cat = obtener_jugadores(cat["nombre"])
+                        if jugadores_en_cat:
+                            st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = True
                             st.rerun()
                         else:
-                            st.error("Fallo al eliminar (revisa permisos o recarga la página).", icon=":material/error:")
+                            if eliminar_categoria(cat["nombre"]):
+                                st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada con éxito."
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error("Fallo al eliminar (revisa permisos o recarga la página).", icon=":material/error:")
+                else:
+                    jugadores_en_cat = obtener_jugadores(cat["nombre"])
+                    st.warning(f"⚠️ Hay {len(jugadores_en_cat)} jugador(es) vinculados a esta categoría. ¿Estás seguro de eliminarla? Se desvincularán todos los jugadores de ella.", icon="⚠️")
+                    
+                    cc1, cc2 = st.columns(2)
+                    with cc1:
+                        if st.button("Sí, eliminar", key=f"confirm_eliminar_{cat['nombre']}", use_container_width=True, type="primary"):
+                            desvincular_jugadores_categoria(cat["nombre"])
+                            if eliminar_categoria(cat["nombre"]):
+                                st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada y {len(jugadores_en_cat)} jugador(es) desvinculados."
+                            else:
+                                st.error("Fallo al eliminar la categoría.", icon=":material/error:")
+                            
+                            st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = False
+                            st.cache_data.clear()
+                            st.rerun()
+                    with cc2:
+                        if st.button("Cancelar", key=f"cancel_eliminar_{cat['nombre']}", use_container_width=True):
+                            st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = False
+                            st.rerun()
+
+if __name__ == '__main__':
+    import streamlit as st
+    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+        st.switch_page('app.py')
+    else:
+        render_categorias()

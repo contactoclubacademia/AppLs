@@ -296,3 +296,10 @@ def render_plantillas() -> None:
                         st.warning("El archivo Excel está vacío. Llena los datos usando la plantilla.", icon=":material/warning:")
                 except Exception as e:
                     st.error(f"Error al leer el archivo Excel. Asegúrate de usar la plantilla correcta. Detalle: {e}", icon=":material/error:")
+
+if __name__ == '__main__':
+    import streamlit as st
+    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+        st.switch_page('app.py')
+    else:
+        render_plantillas()

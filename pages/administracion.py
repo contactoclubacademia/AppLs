@@ -166,3 +166,11 @@ def render_administracion() -> None:
                             st.session_state.msg_admin = f"Permisos actualizados para '{usr_sel}'."
                             st.cache_data.clear()
                             st.rerun()
+
+
+if __name__ == '__main__':
+    import streamlit as st
+    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+        st.switch_page('app.py')
+    else:
+        render_administracion()

@@ -218,6 +218,19 @@ def crear_categoria(nombre: str, profesor: str = "") -> bool:
         return False
 
 
+def desvincular_jugadores_categoria(nombre: str) -> bool:
+    """
+    Desvincula a todos los jugadores de una categoría (establece categoria = None).
+    Útil antes de eliminar una categoría que tiene jugadores asociados.
+    """
+    try:
+        get_supabase().table("jugadores").update({"categoria": None}).eq("categoria", nombre).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error de Supabase al desvincular jugadores: {e}")
+        return False
+
+
 def eliminar_categoria(nombre: str) -> bool:
     """
     Elimina una categoría existente de Supabase.
@@ -404,7 +417,7 @@ def eliminar_pago(id_pago: str) -> bool:
 
 
 @st.cache_data(ttl=60)
-def obtener_pagos(jugador_rut: Optional[str] = None) -> list:
+def obtener_pagos(jugador_rut: Optional[str] = None, mes: Optional[str] = None, anio: Optional[str] = None) -> list:
     """
     Retorna los pagos registrados haciendo JOIN con la tabla 'jugadores'
     para traer el 'nombre' y la 'categoria' del jugador.
@@ -415,6 +428,10 @@ def obtener_pagos(jugador_rut: Optional[str] = None) -> list:
         
         if jugador_rut:
             query = query.eq("jugador_rut", jugador_rut)
+        if mes:
+            query = query.eq("mes_correspondiente", mes)
+        if anio:
+            query = query.like("fecha_pago", f"{anio}-%")
             
         response = query.execute()
         
@@ -475,6 +492,9 @@ def autenticar_usuario(username: str, password: str) -> Optional[dict]:
             else:
                 # Legacy: comparación directa (texto plano)
                 password_ok = (stored_pw == password)
+                # Auto-migrar a formato seguro si el login fue exitoso
+                if password_ok and password:
+                    actualizar_usuario(username, {"password": password})
             
             if password_ok:
                 return {
@@ -514,7 +534,13 @@ def crear_usuario(datos: dict) -> bool:
 def actualizar_usuario(username: str, datos: dict) -> bool:
     """Actualiza datos (y/o permisos) de un usuario."""
     try:
-        res = get_supabase().table("usuarios").update(datos).eq("username", username).execute()
+        datos_guardado = datos.copy()
+        if "password" in datos_guardado:
+            pw_hash, salt = _hash_password(datos_guardado["password"])
+            datos_guardado["password"] = pw_hash
+            datos_guardado["salt"] = salt
+            
+        res = get_supabase().table("usuarios").update(datos_guardado).eq("username", username).execute()
         if not res.data:
             st.error("❌ No se pudo actualizar el usuario.")
             return False

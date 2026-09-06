@@ -44,7 +44,7 @@ def render_pagos() -> None:
 
     # Cargar datos una sola vez para todas las tabs
     lista_categorias = obtener_categorias()
-    pagos_lista = obtener_pagos()
+
 
     tab_registro, tab_historial, tab_modificar = st.tabs(["Registrar Pago", "Historial de Pagos", "Modificar / Eliminar"])
 
@@ -123,11 +123,29 @@ def render_pagos() -> None:
 
     with tab_historial:
         st.subheader(":material/history: Historial completo de pagos")
+        
+        with st.container(border=True):
+            st.subheader(":material/filter_list: Filtros de Fecha")
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                meses_todos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                mes_actual_idx = datetime.now().month - 1
+                mes_hist = st.selectbox("Mes a visualizar", ["Todos"] + meses_todos, index=mes_actual_idx + 1, key="mes_hist")
+            with col_f2:
+                anio_actual = datetime.now().year
+                anios = [str(a) for a in range(2024, anio_actual + 2)]
+                anio_hist = st.selectbox("Año a visualizar", ["Todos"] + anios, index=anios.index(str(anio_actual)) + 1, key="anio_hist")
+
+            mes_q_hist = None if mes_hist == "Todos" else mes_hist
+            anio_q_hist = None if anio_hist == "Todos" else anio_hist
+            
+        pagos_lista = obtener_pagos(mes=mes_q_hist, anio=anio_q_hist)
+        
         if not pagos_lista:
-            st.info("Aun no se han registrado pagos en el sistema.")
+            st.info("Aun no se han registrado pagos en este periodo.")
         else:
             with st.container(border=True):
-                st.subheader(":material/filter_list: Filtros")
+                st.subheader(":material/search: Filtrar y Buscar")
                 
                 cf1, cf2 = st.columns(2)
                 with cf1:
@@ -196,10 +214,28 @@ def render_pagos() -> None:
 
     with tab_modificar:
         st.subheader(":material/edit: Buscar y Modificar Pagos")
-        if not pagos_lista:
-            st.info("Aun no hay pagos registrados para modificar.")
+        
+        with st.container(border=True):
+            st.subheader(":material/filter_list: Seleccionar Periodo")
+            col_fm1, col_fm2 = st.columns(2)
+            with col_fm1:
+                meses_todos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                mes_actual_idx = datetime.now().month - 1
+                mes_mod = st.selectbox("Mes", ["Todos"] + meses_todos, index=mes_actual_idx + 1, key="mes_mod")
+            with col_fm2:
+                anio_actual = datetime.now().year
+                anios = [str(a) for a in range(2024, anio_actual + 2)]
+                anio_mod = st.selectbox("Año", ["Todos"] + anios, index=anios.index(str(anio_actual)) + 1, key="anio_mod")
+
+            mes_q_mod = None if mes_mod == "Todos" else mes_mod
+            anio_q_mod = None if anio_mod == "Todos" else anio_mod
+            
+        pagos_lista_mod = obtener_pagos(mes=mes_q_mod, anio=anio_q_mod)
+
+        if not pagos_lista_mod:
+            st.info("Aun no hay pagos registrados para modificar en este periodo.")
         else:
-            opciones_pagos = {f"{p['jugador_nombre']} - {p['mes_correspondiente']} ({str(p['fecha_pago']).split('T')[0]}) - ${p['monto']:,}": p for p in pagos_lista}
+            opciones_pagos = {f"{p['jugador_nombre']} - {p['mes_correspondiente']} ({str(p['fecha_pago']).split('T')[0]}) - ${p['monto']:,}": p for p in pagos_lista_mod}
             pago_sel_str = st.selectbox(
                 "Buscar Pago a Modificar", 
                 options=list(opciones_pagos.keys()), 
@@ -265,3 +301,10 @@ def render_pagos() -> None:
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue eliminado del sistema."
                                     st.cache_data.clear()
                                     st.rerun()
+
+if __name__ == '__main__':
+    import streamlit as st
+    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+        st.switch_page('app.py')
+    else:
+        render_pagos()

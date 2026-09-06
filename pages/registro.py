@@ -114,3 +114,10 @@ def render_registro() -> None:
                     st.success(f"Jugador {nombre_jugador} registrado correctamente en la categoria {jugador['categoria']}.")
                 else:
                     st.error("Ocurrio un error al guardar el jugador.")
+
+if __name__ == '__main__':
+    import streamlit as st
+    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+        st.switch_page('app.py')
+    else:
+        render_registro()

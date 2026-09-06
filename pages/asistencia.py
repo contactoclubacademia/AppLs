@@ -194,3 +194,10 @@ def render_asistencia() -> None:
                             """,
                             unsafe_allow_html=True
                         )
+
+if __name__ == '__main__':
+    import streamlit as st
+    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+        st.switch_page('app.py')
+    else:
+        render_asistencia()
