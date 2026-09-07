@@ -19,6 +19,12 @@ from database import (obtener_jugadores, obtener_categorias, obtener_profesor_de
                       actualizar_jugador, eliminar_jugador, activar_jugador)
 
 
+
+def format_cat(cat):
+    if isinstance(cat, dict):
+        return cat["nombre"]
+    return cat
+
 def render_plantillas() -> None:
     """Modulo: listado general de jugadores inscritos (solo Administrador)."""
     inject_css()
@@ -59,7 +65,7 @@ def render_plantillas() -> None:
             with c_f1:
                 filtro_estado = st.selectbox("Estado", ["Activos", "Inactivos", "Todos"])
             with c_f2:
-                filtro_categoria = st.selectbox("Filtrar por categoria", ["Todas"] + categorias)
+                filtro_categoria = st.selectbox("Filtrar por categoria", ["Todas"] + categorias, format_func=format_cat)
 
         jugadores_tabla = jugadores_todos
         if filtro_estado == "Activos":
@@ -68,9 +74,9 @@ def render_plantillas() -> None:
             jugadores_tabla = [j for j in jugadores_tabla if j.get("estado") == "Inactivo"]
 
         if filtro_categoria != "Todas":
-            jugadores_tabla = [j for j in jugadores_tabla if j.get("categoria") == filtro_categoria]
-            profesor_cat = obtener_profesor_de(filtro_categoria)
-            st.caption(f"Profesor a cargo de {filtro_categoria}: {profesor_cat or 'Sin asignar'}")
+            jugadores_tabla = [j for j in jugadores_tabla if j.get("categoria") == filtro_categoria["nombre"]]
+            profesor_cat = filtro_categoria.get("profesor", "Sin asignar")
+            st.caption(f"Profesor a cargo de {filtro_categoria['nombre']}: {profesor_cat or 'Sin asignar'}")
 
         if not jugadores_tabla:
             st.warning("No hay jugadores registrados con estos filtros todavia.")
@@ -145,8 +151,8 @@ def render_plantillas() -> None:
                         nuevo_anio = st.number_input("Año de Nacimiento *", value=int(anio_actual), step=1)
                     
                     with c2:
-                        idx_cat = categorias.index(j_data["categoria"]) if j_data["categoria"] in categorias else 0
-                        nueva_categoria = st.selectbox("Categoría *", categorias, index=idx_cat)
+                        idx_cat = next((i for i, c in enumerate(categorias) if c["nombre"] == j_data["categoria"]), 0)
+                        nueva_categoria = st.selectbox("Categoría *", categorias, index=idx_cat, format_func=format_cat)
                     
                     st.markdown("#### Datos del Apoderado")
                     c3, c4 = st.columns(2)
@@ -177,7 +183,7 @@ def render_plantillas() -> None:
                         nuevos_datos = {
                             "nombre": nuevo_nombre.strip(),
                             "anio_nacimiento": nuevo_anio,
-                            "categoria": nueva_categoria,
+                            "categoria_id": nueva_categoria["id"] if isinstance(nueva_categoria, dict) else None,
                             "apoderado_nombre": nuevo_apo_nombre.strip(),
                             "apoderado_telefono": nuevo_apo_tel.strip(),
                             "telefono_emergencia": nuevo_tel_emergencia.strip(),
@@ -187,19 +193,19 @@ def render_plantillas() -> None:
                         campos_obligatorios = [nuevo_nombre, nuevo_apo_nombre, nuevo_apo_tel, nuevo_tel_emergencia, nuevo_apo_rut]
                         if not all(str(c).strip() for c in campos_obligatorios):
                             st.error("Los campos marcados con * son obligatorios.", icon=":material/error:")
-                        elif actualizar_jugador(j_data["rut"], nuevos_datos):
+                        elif actualizar_jugador(j_data["id"], nuevos_datos):
                             st.session_state.msg_jugador_exito = f"Datos de {nuevo_nombre} actualizados correctamente."
                             st.cache_data.clear()
                             st.rerun()
                             
                     if btn_eliminar:
-                        if eliminar_jugador(j_data["rut"]):
+                        if eliminar_jugador(j_data["id"]):
                             st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido dado de baja."
                             st.cache_data.clear()
                             st.rerun()
                             
                     if btn_activar:
-                        if activar_jugador(j_data["rut"], nueva_categoria):
+                        if activar_jugador(j_data["id"], nueva_categoria["id"] if isinstance(nueva_categoria, dict) else None):
                             st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido restaurado exitosamente."
                             st.cache_data.clear()
                             st.rerun()
@@ -246,13 +252,16 @@ def render_plantillas() -> None:
                 try:
                     df_subido = pd.read_excel(archivo_subido)
                     
-                    if len(df_subido) > 0:
+                    if len(df_subido) > 500:
+                        st.error("El archivo no puede tener más de 500 registros.", icon=":material/error:")
+                    elif len(df_subido) > 0:
                         st.write(f"Se encontraron **{len(df_subido)}** registros en el archivo. Previsualización:")
                         st.dataframe(df_subido.head(), use_container_width=True)
                         
                         if st.button("Procesar y Guardar Jugadores", type="primary", use_container_width=True):
                             from database import guardar_jugador
                             from datetime import datetime
+                            cat_map = {c["nombre"].strip().lower(): c["id"] for c in categorias}
                             
                             exitosos = 0
                             errores = 0
@@ -268,11 +277,27 @@ def render_plantillas() -> None:
                                             errores += 1
                                             continue
                                             
+                                        from utils import validar_rut
+                                        if not validar_rut(rut_str):
+                                            errores += 1
+                                            continue
+                                        
+                                        # Resolver categoría del Excel al ID de la BD
+                                        cat_nombre = str(row.get("Categoria", "")).strip().lower()
+                                        cat_id = cat_map.get(cat_nombre)
+                                        
+                                        # Año de nacimiento
+                                        anio_raw = row.get("Anio Nacimiento", 2014)
+                                        try:
+                                            anio = int(anio_raw)
+                                        except (ValueError, TypeError):
+                                            anio = 2014
+                                            
                                         jugador = {
                                             "rut": rut_str,
                                             "nombre": nombre_str,
-                                            "categoria": str(row.get("Categoria", "")).strip().replace("nan", ""),
-                                            "anio_nacimiento": int(row.get("Anio Nacimiento", 2014)) if pd.notna(row.get("Anio Nacimiento")) else 2014,
+                                            "anio_nacimiento": anio,
+                                            "categoria_id": cat_id,
                                             "apoderado_nombre": str(row.get("Nombre Apoderado", "")).strip().replace("nan", ""),
                                             "apoderado_rut": str(row.get("RUT Apoderado", "")).strip().replace("nan", ""),
                                             "apoderado_telefono": str(row.get("Telefono Apoderado", "")).strip().replace("nan", ""),

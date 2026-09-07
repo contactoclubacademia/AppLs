@@ -17,15 +17,7 @@ from estilos import inject_css
 from database import obtener_categorias, obtener_profesor_de, guardar_jugador
 
 
-def validar_formato_rut(rut: str) -> bool:
-    """
-    Valida que el RUT tenga el formato exacto: 8 digitos + guion + 1 digito o K/k.
-    Ejemplo valido: 21988505-9
-    """
-    if not rut:
-        return False
-    patron = r'^\d{8}-[\dkK]$'
-    return bool(re.match(patron, rut.strip()))
+from utils import validar_rut
 
 
 def render_registro() -> None:
@@ -45,7 +37,9 @@ def render_registro() -> None:
     categorias_disponibles = obtener_categorias()
     if not categorias_disponibles:
         st.warning("Todavia no hay categorias creadas. Ve al modulo Categorias y crea al menos una (por ejemplo, Sub-12) antes de registrar jugadores.")
-    opciones_categoria = categorias_disponibles or ["— Crea una categoria primero —"]
+        opciones_categoria = ["— Crea una categoria primero —"]
+    else:
+        opciones_categoria = categorias_disponibles
 
     # Unico formulario que envuelve todo
     with st.form("registro_form", clear_on_submit=True):
@@ -62,12 +56,15 @@ def render_registro() -> None:
                     min_value=2005, max_value=date.today().year, value=2014, step=1,
                 )
                 categoria_sel = st.selectbox(
-                    "Categoria *", opciones_categoria, disabled=not categorias_disponibles,
+                    "Categoria *", 
+                    opciones_categoria, 
+                    format_func=lambda x: x["nombre"] if isinstance(x, dict) else x,
+                    disabled=not categorias_disponibles,
                 )
 
-        if categorias_disponibles:
-            profesor_cat = obtener_profesor_de(categoria_sel)
-            st.caption(f"Profesor a cargo de {categoria_sel}: {profesor_cat or 'Sin asignar'}")
+        if categorias_disponibles and isinstance(categoria_sel, dict):
+            profesor_cat = categoria_sel.get("profesor", "Sin asignar")
+            st.caption(f"Profesor a cargo de {categoria_sel['nombre']}: {profesor_cat or 'Sin asignar'}")
 
         # Seccion 2: Datos del Apoderado
         with st.container(border=True):
@@ -93,16 +90,16 @@ def render_registro() -> None:
                 st.error("No puedes registrar jugadores sin categorias. Crealas en Categorias primero.", icon=":material/error:")
             elif not all(str(c).strip() for c in campos_obligatorios):
                 st.error("Por favor completa todos los campos obligatorios (*).", icon=":material/error:")
-            elif not validar_formato_rut(rut_jugador):
-                st.error("El RUT del jugador debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).", icon=":material/error:")
-            elif not validar_formato_rut(rut_apoderado):
-                st.error("El RUT del apoderado debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).", icon=":material/error:")
+            elif not validar_rut(rut_jugador):
+                st.error("El RUT del jugador es inválido. Debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).", icon=":material/error:")
+            elif not validar_rut(rut_apoderado):
+                st.error("El RUT del apoderado es inválido. Debe tener formato 8 digitos + guion + 1 digito/K (ej: 21988505-9).", icon=":material/error:")
             else:
                 jugador = {
                     "rut": rut_jugador.strip(),
                     "nombre": nombre_jugador.strip(),
                     "anio_nacimiento": int(anio_nacimiento),
-                    "categoria": categoria_sel,
+                    "categoria_id": categoria_sel["id"] if isinstance(categoria_sel, dict) else None,
                     "apoderado_rut": rut_apoderado.strip(),
                     "apoderado_nombre": nombre_apoderado.strip(),
                     "apoderado_telefono": telefono_apoderado.strip(),

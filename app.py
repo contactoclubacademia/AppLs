@@ -35,6 +35,7 @@ ARQUITECTURA MODULAR
 
 import streamlit as st
 from streamlit_option_menu import option_menu
+from html import escape as html_escape
 
 from database import autenticar_usuario
 from estilos import inject_css
@@ -64,9 +65,11 @@ def _inject_global_css() -> None:
 
 def _render_topbar() -> None:
     user = st.session_state.user
+    nombre_safe = html_escape(str(user['nombre']))
+    rol_safe = html_escape(str(user['rol']))
     st.markdown(f"""
         <div class="topbar-chip">
-            <span class="topbar-dot"></span>{user['nombre']} · {user['rol']}
+            <span class="topbar-dot"></span>{nombre_safe} · {rol_safe}
         </div>
     """, unsafe_allow_html=True)
 
@@ -92,12 +95,14 @@ def render_sidebar() -> str:
     rol = st.session_state.user["rol"]
 
     with st.sidebar:
+        nombre_sidebar = html_escape(str(st.session_state.user['nombre']))
+        rol_sidebar = html_escape(str(rol))
         st.markdown(
             f"""
             <div class="sidebar-header">
                 <div class="sidebar-brand">Academia La Serena</div>
-                <div class="sidebar-user">{st.session_state.user['nombre']}</div>
-                <div class="sidebar-role">{rol}</div>
+                <div class="sidebar-user">{nombre_sidebar}</div>
+                <div class="sidebar-role">{rol_sidebar}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -161,8 +166,12 @@ def render_sidebar() -> str:
             },
         )
 
-        st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
-        if st.button("Cerrar Sesion", width="stretch", key="logout_btn"):
+        st.markdown("<div class='sidebar-spacer'></div>", unsafe_allow_html=True)
+        
+        # Opciones extra
+        st.markdown("<div style='margin-top: auto;'>", unsafe_allow_html=True)
+        
+        if st.button("Cerrar Sesión", type="secondary", use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.user = None
             try:

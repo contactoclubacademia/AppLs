@@ -9,6 +9,7 @@ Solo accesible por Administradores.
 
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime
 
@@ -33,34 +34,42 @@ def render_administracion() -> None:
     tab1, tab2, tab3 = st.tabs(["Dashboard", "Profesores y Cuentas", "Control de Accesos"])
 
     with tab1:
-        st.subheader("Resumen General")
+        st.subheader("Data Warehouse & BI")
         
-        # Recopilar datos para métricas
-        jugadores = obtener_jugadores()
-        activos = [j for j in jugadores if j.get("estado") != "Inactivo"]
-        categorias = obtener_categorias()
+        # Cooldown para el ETL
+        from datetime import timedelta
         
-        pagos = obtener_pagos()
-        mes_actual = datetime.now().strftime("%Y-%m")
-        pagos_mes = [p for p in pagos if str(p.get("fecha_pago", "")).startswith(mes_actual)]
-        ingresos_mes = sum(int(p.get("monto", 0)) for p in pagos_mes)
-        
-        c1, c2, c3 = st.columns(3)
-        with st.container(border=True):
-            c1.metric("Jugadores Activos", len(activos))
-            c2.metric("Categorías Activas", len(categorias))
-            c3.metric(f"Ingresos ({mes_actual})", f"${ingresos_mes:,}")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info("El Dashboard se actualiza automáticamente cada 24 hrs. Si los datos no coinciden, puedes forzar la actualización aquí.", icon=":material/info:")
+        with col2:
+            ahora = datetime.now()
+            if "ultimo_etl" not in st.session_state:
+                st.session_state.ultimo_etl = None
+                
+            en_cooldown = st.session_state.ultimo_etl and (ahora - st.session_state.ultimo_etl) < timedelta(minutes=5)
             
-        with st.container(border=True):
-            st.markdown("#### Últimos Pagos Registrados")
-            if pagos:
-                # Mostrar los 5 pagos más recientes
-                df_pagos = pd.DataFrame(pagos).sort_values(by="fecha_pago", ascending=False).head(5)
-                columnas = ["fecha_pago", "jugador_nombre", "categoria", "mes_correspondiente", "monto", "metodo"]
-                df_pagos = df_pagos[[c for c in columnas if c in df_pagos.columns]]
-                st.dataframe(df_pagos, hide_index=True, use_container_width=True)
+            if en_cooldown:
+                restante = 5 - int((ahora - st.session_state.ultimo_etl).total_seconds() / 60)
+                st.button(f"Sincronizando (Espera {restante}m)", disabled=True, use_container_width=True)
             else:
-                st.info("No hay pagos registrados aún.")
+                if st.button("Forzar Actualización (ETL)", type="primary", use_container_width=True):
+                    import subprocess
+                    import sys
+                    with st.spinner("Sincronizando Base de Datos..."):
+                        try:
+                            subprocess.check_call([sys.executable, "etl.py"])
+                            st.session_state.ultimo_etl = datetime.now()
+                            st.success("¡Sincronización exitosa!")
+                            st.rerun()
+                        except subprocess.CalledProcessError as e:
+                            st.error(f"Error en el proceso ETL. Detalle: {e}")
+                        except Exception as e:
+                            st.error(f"Error al ejecutar ETL: {e}")
+
+        st.markdown("---")
+        looker_url = "https://datastudio.google.com/embed/reporting/59c571af-52d8-4d7d-a9ac-6ae517461b12/page/qXG8F"
+        components.iframe(looker_url, width=1000, height=800, scrolling=True)
 
     with tab2:
         st.subheader("Gestión de Cuentas")

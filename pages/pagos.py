@@ -17,6 +17,12 @@ from estilos import inject_css
 from database import (obtener_jugadores, obtener_categorias,
                       guardar_pago, obtener_pagos, actualizar_pago, eliminar_pago)
 
+
+def format_cat(cat):
+    if isinstance(cat, dict):
+        return cat["nombre"]
+    return cat
+
 def render_pagos() -> None:
     """Modulo: registro y visualizacion de pagos de mensualidades (solo Administrador)."""
     inject_css()
@@ -54,11 +60,11 @@ def render_pagos() -> None:
 
             c1, c2 = st.columns(2)
             with c1:
-                cat_filtro = st.selectbox("Filtrar por categoria para buscar jugador", ["Todas"] + lista_categorias, key="pago_cat_filtro")
+                cat_filtro = st.selectbox("Filtrar por categoria para buscar jugador", ["Todas"] + lista_categorias, key="pago_cat_filtro", format_func=format_cat)
 
             jugadores_filtrados = jugadores
             if cat_filtro != "Todas":
-                jugadores_filtrados = [j for j in jugadores if j["categoria"] == cat_filtro]
+                jugadores_filtrados = [j for j in jugadores if j["categoria"] == (cat_filtro["nombre"] if isinstance(cat_filtro, dict) else cat_filtro)]
 
             if not jugadores_filtrados:
                 st.warning("No hay jugadores en la categoria seleccionada.", icon=":material/warning:")
@@ -106,7 +112,7 @@ def render_pagos() -> None:
 
                     if guardar_btn:
                         pago_dict = {
-                            "jugador_rut": jugador_sel["rut"],
+                            "jugador_id": jugador_sel["id"],
                             "mes_correspondiente": mes_sel,
                             "monto": int(monto),
                             "metodo": metodo_pago,
@@ -149,11 +155,11 @@ def render_pagos() -> None:
                 
                 cf1, cf2 = st.columns(2)
                 with cf1:
-                    filtro_hist_cat = st.selectbox("Filtrar historial por categoria", ["Todas"] + lista_categorias, key="pago_hist_cat_filtro")
+                    filtro_hist_cat = st.selectbox("Filtrar historial por categoria", ["Todas"] + lista_categorias, key="pago_hist_cat_filtro", format_func=format_cat)
                 
                 pagos_mostrar = pagos_lista
                 if filtro_hist_cat != "Todas":
-                    pagos_mostrar = [p for p in pagos_mostrar if p.get("categoria") == filtro_hist_cat]
+                    pagos_mostrar = [p for p in pagos_mostrar if p.get("categoria") == (filtro_hist_cat["nombre"] if isinstance(filtro_hist_cat, dict) else filtro_hist_cat)]
                 
                 # Generar lista de jugadores únicos para el autocompletado
                 opciones_jugadores = sorted(list(set([f"{p.get('jugador_nombre', '')} - {p.get('jugador_rut', '')}" for p in pagos_mostrar])))

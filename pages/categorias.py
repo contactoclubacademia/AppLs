@@ -90,7 +90,7 @@ def render_categorias() -> None:
             with st.expander(f"{cat['nombre']} · {etiqueta_prof}"):
                 # roster ya fue cargado arriba
 
-                with st.form(f"form_actualizar_prof_{cat['nombre']}", clear_on_submit=True):
+                with st.form(f"form_actualizar_prof_{cat['id']}", clear_on_submit=True):
                     ec1, ec2 = st.columns([2, 1])
                     with ec1:
                         nuevo_prof_sel = st.selectbox(
@@ -106,7 +106,7 @@ def render_categorias() -> None:
 
                     if guardar:
                         profesor_final = nuevo_prof_sel if nuevo_prof_sel else ""
-                        if actualizar_profesor_categoria(cat["nombre"], profesor_final):
+                        if actualizar_profesor_categoria(cat["id"], profesor_final):
                             st.session_state.msg_lista_exito = f"Profesor actualizado correctamente para {cat['nombre']}."
                             st.cache_data.clear()
                             st.rerun()
@@ -116,36 +116,36 @@ def render_categorias() -> None:
                 # Botón eliminar
                 st.write("")
                 # Estado para la confirmación de eliminación
-                if f"confirmar_eliminar_{cat['nombre']}" not in st.session_state:
-                    st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = False
+                if f"confirmar_eliminar_{cat['id']}" not in st.session_state:
+                    st.session_state[f"confirmar_eliminar_{cat['id']}"] = False
 
-                if not st.session_state[f"confirmar_eliminar_{cat['nombre']}"]:
-                    if st.button("Eliminar categoria", key=f"eliminar_{cat['nombre']}", use_container_width=True, type="secondary"):
-                        jugadores_en_cat = obtener_jugadores(cat["nombre"])
+                if not st.session_state[f"confirmar_eliminar_{cat['id']}"]:
+                    if st.button("Eliminar categoria", key=f"eliminar_{cat['id']}", use_container_width=True, type="secondary"):
+                        jugadores_en_cat = obtener_jugadores(cat["id"])
                         if jugadores_en_cat:
-                            st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = True
+                            st.session_state[f"confirmar_eliminar_{cat['id']}"] = True
                             st.rerun()
                         else:
-                            if eliminar_categoria(cat["nombre"]):
+                            if eliminar_categoria(cat["id"]):
                                 st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada con éxito."
                                 st.cache_data.clear()
                                 st.rerun()
                             else:
                                 st.error("Fallo al eliminar (revisa permisos o recarga la página).", icon=":material/error:")
                 else:
-                    jugadores_en_cat = obtener_jugadores(cat["nombre"])
+                    jugadores_en_cat = obtener_jugadores(cat["id"])
                     st.warning(f"⚠️ Hay {len(jugadores_en_cat)} jugador(es) vinculados a esta categoría. ¿Estás seguro de eliminarla? Se desvincularán todos los jugadores de ella.", icon="⚠️")
                     
                     cc1, cc2 = st.columns(2)
                     with cc1:
-                        if st.button("Sí, eliminar", key=f"confirm_eliminar_{cat['nombre']}", use_container_width=True, type="primary"):
-                            desvincular_jugadores_categoria(cat["nombre"])
-                            if eliminar_categoria(cat["nombre"]):
+                        if st.button("Sí, eliminar", key=f"confirm_eliminar_{cat['id']}", use_container_width=True, type="primary"):
+                            desvincular_jugadores_categoria(cat["id"])
+                            if eliminar_categoria(cat["id"]):
                                 st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada y {len(jugadores_en_cat)} jugador(es) desvinculados."
                             else:
                                 st.error("Fallo al eliminar la categoría.", icon=":material/error:")
                             
-                            st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = False
+                            st.session_state[f"confirmar_eliminar_{cat['id']}"] = False
                             st.cache_data.clear()
                             st.rerun()
                     with cc2:

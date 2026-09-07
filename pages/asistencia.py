@@ -49,29 +49,31 @@ def render_asistencia() -> None:
             with c1:
                 fecha_sel = st.date_input("Fecha de asistencia", value=date.today())
             with c2:
-                cat_sel = st.selectbox("Seleccionar Categoría", categorias)
+                cat_sel = st.selectbox("Seleccionar Categoría", categorias, format_func=lambda x: x["nombre"] if isinstance(x, dict) else x)
 
         if not cat_sel:
             return
 
-        jugadores = obtener_jugadores(cat_sel)
+        jugadores = obtener_jugadores(cat_sel["id"] if isinstance(cat_sel, dict) else None)
 
         if not jugadores:
-            st.info(f"No hay jugadores registrados en la categoría {cat_sel}.")
+            st.info(f"No hay jugadores registrados en la categoría {cat_sel['nombre']}.")
             return
 
-        asistencia_previa = obtener_asistencia(fecha_sel.strftime("%Y-%m-%d"), cat_sel)
+        asistencia_previa_list = obtener_asistencia(fecha_sel.strftime("%Y-%m-%d"), cat_sel["id"] if isinstance(cat_sel, dict) else None)
+        asistencia_previa = {a["jugador_id"]: a for a in asistencia_previa_list}
 
         with st.form("form_asistencia"):
-            st.write(f"### Jugadores - {cat_sel}")
+            st.write(f"### Jugadores - {cat_sel['nombre']}")
             st.caption(f"Fecha: {fecha_sel.strftime('%d/%m/%Y')}")
             
-            nuevos_registros = {}
+            nuevos_registros = []
             for j in jugadores:
                 rut = j["rut"]
+                jid = j["id"]
                 nombre = j["nombre"]
                 
-                estado_previo = asistencia_previa.get(rut, {}).get("estado", "Presente")
+                estado_previo = asistencia_previa.get(jid, {}).get("estado", "Presente")
                 
                 opciones = ["Presente", "Ausente", "Justificado"]
                 idx_default = opciones.index(estado_previo) if estado_previo in opciones else 0
@@ -83,14 +85,14 @@ def render_asistencia() -> None:
                     horizontal=True,
                     key=f"ast_{rut}"
                 )
-                nuevos_registros[rut] = {"estado": estado_sel}
+                nuevos_registros.append({"jugador_id": jid, "estado": estado_sel})
                 
             st.markdown("---")
             guardar_btn = st.form_submit_button("GUARDAR ASISTENCIA", width="stretch", type="primary")
             
             if guardar_btn:
-                if guardar_asistencia(fecha_sel.strftime("%Y-%m-%d"), cat_sel, nuevos_registros):
-                    st.session_state.msg_asistencia_exito = f"Asistencia del {fecha_sel.strftime('%d/%m/%Y')} para {cat_sel} guardada correctamente."
+                if guardar_asistencia(fecha_sel.strftime("%Y-%m-%d"), cat_sel["id"], nuevos_registros):
+                    st.session_state.msg_asistencia_exito = f"Asistencia del {fecha_sel.strftime('%d/%m/%Y')} para {cat_sel['nombre']} guardada correctamente."
                     st.cache_data.clear()
                     st.rerun()
 
@@ -102,10 +104,10 @@ def render_asistencia() -> None:
             if not historial_completo:
                 st.info("Aún no hay registros de asistencia en el sistema.")
             else:
-                cat_hist = st.selectbox("Filtrar por Categoría", ["Todas"] + categorias, key="hist_cat")
+                cat_hist = st.selectbox("Filtrar por Categoría", ["Todas"] + categorias, format_func=lambda x: x["nombre"] if isinstance(x, dict) else x, key="hist_cat")
                 
                 if cat_hist != "Todas":
-                    historial_completo = [h for h in historial_completo if h["categoria"] == cat_hist]
+                    historial_completo = [h for h in historial_completo if h["categoria"] == cat_hist["nombre"]]
                 
                 if not historial_completo:
                     st.warning("No hay registros para la categoría seleccionada.")
