@@ -8,6 +8,8 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 """
 
 import io
+import re
+import urllib.parse
 from datetime import date, datetime
 
 import pandas as pd
@@ -15,7 +17,8 @@ import streamlit as st
 
 from utils import format_cat, MESES, verificar_permisos
 from database import (obtener_jugadores, obtener_categorias,
-                      guardar_pago, obtener_pagos, actualizar_pago, eliminar_pago)
+                      guardar_pago, obtener_pagos, actualizar_pago, eliminar_pago,
+                      obtener_estado_pagos_mes)
 
 def render_pagos() -> None:
     """Modulo: registro y visualizacion de pagos de mensualidades (solo Administrador)."""
@@ -43,7 +46,9 @@ def render_pagos() -> None:
     lista_categorias = obtener_categorias()
 
 
-    tab_registro, tab_historial, tab_modificar = st.tabs(["Registrar Pago", "Historial de Pagos", "Modificar / Eliminar"])
+    tab_registro, tab_historial, tab_modificar, tab_morosos = st.tabs([
+        "Registrar Pago", "Historial de Pagos", "Modificar / Eliminar", "⚠️ Morosos"
+    ])
 
     with tab_registro:
         with st.container(border=True):
@@ -306,6 +311,229 @@ def render_pagos() -> None:
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue eliminado del sistema."
                                     obtener_pagos.clear()
                                     st.rerun()
+
+    # ─────────────────────────────────────────────────────────────────
+    # PESTAÑA: MOROSOS
+    # ─────────────────────────────────────────────────────────────────
+    with tab_morosos:
+        st.subheader(":material/warning: Gestion de Morosidad")
+
+        # ── Configuracion de periodo y mensualidad ─────────────────────────
+        with st.container(border=True):
+            st.subheader(":material/settings: Configuracion del periodo")
+            hoy = datetime.now()
+            mes_def = hoy.month - 1 if hoy.month > 1 else 12
+            anio_def = hoy.year if hoy.month > 1 else hoy.year - 1
+
+            col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
+            with col_cfg1:
+                mes_morosos = st.selectbox(
+                    "Mes a revisar",
+                    options=list(range(1, 13)),
+                    index=mes_def - 1,
+                    format_func=lambda x: MESES[x - 1],
+                    key="mor_mes"
+                )
+            with col_cfg2:
+                anios_disp = list(range(2024, hoy.year + 1))
+                idx_anio_def = anios_disp.index(anio_def) if anio_def in anios_disp else len(anios_disp) - 1
+                anio_morosos = st.selectbox("Año", anios_disp, index=idx_anio_def, key="mor_anio")
+            with col_cfg3:
+                monto_mensualidad = st.number_input(
+                    "Monto mensualidad ($)",
+                    min_value=0,
+                    value=st.session_state.get("mor_mensualidad", 30000),
+                    step=5000,
+                    key="mor_mensualidad",
+                    help="Monto completo de la mensualidad. Quien pague menos que esto aparece como moroso o abonador."
+                )
+
+        # ── Carga de datos ──────────────────────────────────────────
+        estado_lista = obtener_estado_pagos_mes(mes_morosos, anio_morosos)
+        mes_nombre = MESES[mes_morosos - 1]
+
+        # Clasificacion de jugadores
+        sin_pago      = [j for j in estado_lista if j["total_pagado"] == 0]
+        pago_parcial  = [j for j in estado_lista if 0 < j["total_pagado"] < monto_mensualidad]
+        al_dia        = [j for j in estado_lista if j["total_pagado"] >= monto_mensualidad]
+        total_activos = len(estado_lista)
+
+        # ── Metricas resumen ──────────────────────────────────────────
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        col_m1.metric("Jugadores activos", total_activos)
+        col_m2.metric(
+            "Al dia", len(al_dia),
+            delta=f"+{len(al_dia)}" if al_dia else None,
+            delta_color="normal"
+        )
+        col_m3.metric(
+            "Sin pago", len(sin_pago),
+            delta=f"-{len(sin_pago)}" if sin_pago else None,
+            delta_color="inverse"
+        )
+        col_m4.metric(
+            "Abono parcial", len(pago_parcial),
+            delta=f"-{len(pago_parcial)}" if pago_parcial else None,
+            delta_color="inverse"
+        )
+
+        if not sin_pago and not pago_parcial:
+            st.success(
+                f"Todos los apoderados han completado su pago en "
+                f"{mes_nombre} {anio_morosos}.",
+                icon=":material/check_circle:"
+            )
+        else:
+            # Helpers de telefono y WhatsApp
+            def _normalizar_tel(tel: str) -> str:
+                digits = re.sub(r"\D", "", str(tel or ""))
+                if not digits:
+                    return ""
+                if digits.startswith("56"):
+                    return digits
+                if digits.startswith("9") and len(digits) == 9:
+                    return "56" + digits
+                if digits.startswith("0"):
+                    return "56" + digits[1:]
+                return "56" + digits
+
+            def _wa_url(row: dict, plantilla: str) -> str:
+                tel = _normalizar_tel(row.get("apoderado_telefono", ""))
+                if not tel:
+                    return ""
+                falta = monto_mensualidad - row["total_pagado"]
+                try:
+                    msg = plantilla.format(
+                        apoderado=row.get("apoderado_nombre", ""),
+                        jugador=row.get("jugador_nombre", ""),
+                        mes=mes_nombre,
+                        anio=str(anio_morosos),
+                        categoria=row.get("categoria", ""),
+                        total_pagado=f"${row['total_pagado']:,.0f}",
+                        falta=f"${falta:,.0f}",
+                        mensualidad=f"${monto_mensualidad:,.0f}"
+                    )
+                except Exception:
+                    msg = plantilla
+                return f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}"
+
+            def _render_tabla(datos: list, plantilla: str, cols_extra: list, nombre_hoja: str, key_suffix: str):
+                """Renderiza una tabla de morosos/abonadores con link WhatsApp y boton de exportar."""
+                df = pd.DataFrame(datos)
+                df["Contactar"] = df.apply(lambda r: _wa_url(r, plantilla), axis=1)
+                cols_mostrar  = ["jugador_nombre", "jugador_rut", "categoria",
+                                 "apoderado_nombre", "apoderado_telefono"] + cols_extra + ["Contactar"]
+                col_cfg = {
+                    "jugador_nombre":     st.column_config.TextColumn("Jugador"),
+                    "jugador_rut":        st.column_config.TextColumn("RUT"),
+                    "categoria":          st.column_config.TextColumn("Categoria"),
+                    "apoderado_nombre":   st.column_config.TextColumn("Apoderado"),
+                    "apoderado_telefono": st.column_config.TextColumn("Telefono"),
+                    "Contactar":          st.column_config.LinkColumn(
+                                              "Contactar por WhatsApp",
+                                              display_text="Enviar mensaje"
+                                          ),
+                }
+                if "total_pagado" in cols_extra:
+                    df["total_pagado"] = df["total_pagado"].apply(lambda x: f"${x:,.0f}")
+                    col_cfg["total_pagado"] = st.column_config.TextColumn("Abonado ($)")
+                if "saldo_pendiente" in cols_extra:
+                    df["saldo_pendiente"] = df.apply(
+                        lambda r: monto_mensualidad - float(str(r["total_pagado"]).replace("$","").replace(",","") or 0)
+                        if isinstance(r["total_pagado"], str)
+                        else monto_mensualidad - r["total_pagado"],
+                        axis=1
+                    )
+                    df["saldo_pendiente"] = df["saldo_pendiente"].apply(lambda x: f"${x:,.0f}")
+                    col_cfg["saldo_pendiente"] = st.column_config.TextColumn("Saldo pendiente ($)")
+
+                st.dataframe(
+                    df[cols_mostrar],
+                    column_config=col_cfg,
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+                # Exportar Excel
+                buf = io.BytesIO()
+                df_exp = df[[c for c in cols_mostrar if c != "Contactar"]].copy()
+                with pd.ExcelWriter(buf, engine="openpyxl") as w:
+                    df_exp.to_excel(w, index=False, sheet_name=nombre_hoja)
+                st.download_button(
+                    label=":material/download: Exportar a Excel",
+                    data=buf.getvalue(),
+                    file_name=f"{nombre_hoja}_{mes_nombre}_{anio_morosos}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="secondary",
+                    key=f"dl_{key_suffix}"
+                )
+
+            # ── Mensaje personalizable (compartido) ──────────────────────
+            _msg_sin_pago = (
+                "Estimado/a {apoderado}, le informamos que el pago de mensualidad "
+                "del mes de {mes} {anio} correspondiente a su hijo/a {jugador} "
+                "({categoria}) en Academia La Serena se encuentra PENDIENTE.\n\n"
+                "El monto a cancelar es de {mensualidad}.\n"
+                "Le solicitamos regularizar su situacion a la brevedad posible.\n\n"
+                "Academia La Serena"
+            )
+            _msg_abono = (
+                "Estimado/a {apoderado}, le informamos que el pago de mensualidad "
+                "del mes de {mes} {anio} de su hijo/a {jugador} ({categoria}) "
+                "se encuentra INCOMPLETO.\n\n"
+                "Abono registrado: {total_pagado}\n"
+                "Saldo pendiente: {falta} (mensualidad: {mensualidad})\n\n"
+                "Le solicitamos regularizar su situacion a la brevedad posible.\n\n"
+                "Academia La Serena"
+            )
+
+            with st.expander(":material/edit: Personalizar mensajes de WhatsApp", expanded=False):
+                st.caption("Variables disponibles: {apoderado}, {jugador}, {mes}, {anio}, {categoria}, {total_pagado}, {falta}, {mensualidad}")
+                col_msg1, col_msg2 = st.columns(2)
+                with col_msg1:
+                    st.write("**Mensaje para sin pago:**")
+                    plantilla_sin_pago = st.text_area(
+                        "sin_pago", value=_msg_sin_pago, height=180,
+                        key="mor_msg_sinpago", label_visibility="collapsed"
+                    )
+                with col_msg2:
+                    st.write("**Mensaje para abono parcial:**")
+                    plantilla_abono = st.text_area(
+                        "abono", value=_msg_abono, height=180,
+                        key="mor_msg_abono", label_visibility="collapsed"
+                    )
+
+            # ── Tabla 1: Sin pago ─────────────────────────────────────────
+            if sin_pago:
+                with st.container(border=True):
+                    st.subheader(
+                        f":material/money_off: Sin pago registrado "
+                        f"({len(sin_pago)} de {total_activos}) — {mes_nombre} {anio_morosos}"
+                    )
+                    _render_tabla(
+                        sin_pago, plantilla_sin_pago,
+                        cols_extra=[],
+                        nombre_hoja="Morosos",
+                        key_suffix="sinpago"
+                    )
+
+            # ── Tabla 2: Abono parcial ───────────────────────────────────
+            if pago_parcial:
+                # Agregar columna saldo pendiente antes de renderizar
+                for row in pago_parcial:
+                    row["saldo_pendiente"] = monto_mensualidad - row["total_pagado"]
+                with st.container(border=True):
+                    st.subheader(
+                        f":material/payments: Con abono parcial "
+                        f"({len(pago_parcial)} de {total_activos}) — {mes_nombre} {anio_morosos}"
+                    )
+                    _render_tabla(
+                        pago_parcial, plantilla_abono,
+                        cols_extra=["total_pagado", "saldo_pendiente"],
+                        nombre_hoja="Abonadores",
+                        key_suffix="abono"
+                    )
+
 
 if __name__ == '__main__':
     import streamlit as st

@@ -430,9 +430,78 @@ def obtener_pagos(mes: Optional[str] = None, anio: Optional[str] = None) -> list
         st.error("No se pudieron cargar los pagos. Intenta recargar la página.")
         return []
 
+@st.cache_data(ttl=60)
+def obtener_estado_pagos_mes(mes: int, anio: int) -> list:
+    """Retorna todos los jugadores activos con el monto total pagado en el mes/año indicado.
+
+    Permite al llamador determinar:
+      - Sin pago:      total_pagado == 0
+      - Abono parcial: 0 < total_pagado < monto_mensualidad
+      - Al día:        total_pagado >= monto_mensualidad
+
+    Args:
+        mes:  Número de mes (1-12)
+        anio: Año (ej: 2026)
+    Returns:
+        Lista de dicts ordenada por categoría, cada uno con:
+        jugador_id, jugador_nombre, jugador_rut, categoria,
+        apoderado_nombre, apoderado_telefono, apoderado_rut, total_pagado.
+    """
+    try:
+        # 1. Pagos del mes: jugador_id → suma de montos abonados
+        fk_tiempo_periodo = int(f"{anio}{mes:02d}01")
+        res_pagos = (
+            get_supabase()
+            .table("fact_pagos")
+            .select("jugador_id, monto")
+            .eq("fk_tiempo_periodo", fk_tiempo_periodo)
+            .execute()
+        )
+        pagos_por_jugador: dict = {}
+        for p in (res_pagos.data or []):
+            jid = p["jugador_id"]
+            pagos_por_jugador[jid] = pagos_por_jugador.get(jid, 0.0) + float(p["monto"])
+
+        # 2. Todos los jugadores activos con datos de apoderado y categoría
+        res_jug = (
+            get_supabase()
+            .table("dim_jugador")
+            .select(
+                "id, nombre, rut, categoria_id, "
+                "dim_apoderado(nombre, telefono, rut), "
+                "dim_categoria(nombre)"
+            )
+            .eq("estado", "Activo")
+            .execute()
+        )
+
+        resultado = []
+        for j in (res_jug.data or []):
+            if not j.get("categoria_id"):
+                continue
+            apo = j.get("dim_apoderado") or {}
+            cat = j.get("dim_categoria") or {}
+            resultado.append({
+                "jugador_id":         j["id"],
+                "jugador_nombre":     j.get("nombre", ""),
+                "jugador_rut":        j.get("rut", ""),
+                "categoria":          cat.get("nombre", "Sin Categoría"),
+                "apoderado_nombre":   apo.get("nombre", "Sin apoderado"),
+                "apoderado_telefono": apo.get("telefono", ""),
+                "apoderado_rut":      apo.get("rut", ""),
+                "total_pagado":       pagos_por_jugador.get(j["id"], 0.0),
+            })
+
+        return sorted(resultado, key=lambda x: x["categoria"])
+    except Exception as e:
+        logger.error(f"Error al obtener estado de pagos del mes: {e}")
+        st.error("No se pudo cargar el estado de pagos. Intenta recargar la pagina.")
+        return []
+
 # =============================================================================
 # AUTENTICACIÓN SUPABASE (OAuth / Email)
 # =============================================================================
+
 
 def autenticar_usuario(email: str, password: str) -> Optional[dict]:
     """Inicia sesión usando Supabase Auth y recupera los datos de dim_usuario.
