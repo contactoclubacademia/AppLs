@@ -1,2 +1,31 @@
+# ── Credenciales y secretos (NUNCA subir) ──────────────────────────
 .streamlit/secrets.toml
+.env
+.env.*
+*.pem
+*.key
+
+# ── Base de datos Supabase (esquema y migraciones locales) ──────────
+supabase/
+
+# ── Entornos virtuales ──────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Cache de Python ─────────────────────────────────────────────────
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Archivos temporales y del sistema ───────────────────────────────
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# ── Archivos de datos locales (si usas exports) ─────────────────────
+*.xlsx
+*.csv

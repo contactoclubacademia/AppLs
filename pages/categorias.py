@@ -10,28 +10,26 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 
 import streamlit as st
 
-from estilos import inject_css
-from database import (obtener_categorias_config, obtener_usuarios,
+from database import (obtener_categorias, obtener_profesores,
                       crear_categoria, actualizar_profesor_categoria,
                       eliminar_categoria, obtener_jugadores, desvincular_jugadores_categoria)
+from utils import verificar_permisos
 
 
 def render_categorias() -> None:
     """Modulo: crear, eliminar y asignar profesor a las categorias (solo Administrador)."""
-    inject_css()
 
     # Verificación de permisos
-    permisos = st.session_state.user.get("permisos") or []
-    rol = st.session_state.user.get("rol")
-    if rol != "Administrador" and "Categorias" not in permisos:
-        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+    if not verificar_permisos("Categorias"):
         return
+
 
     st.title(":material/category: Categorias")
 
-    # Cargar usuarios una sola vez (evita N+1 queries)
-    usuarios = obtener_usuarios()
-    roster = [u["nombre"] for u in usuarios if u["rol"] != "Administrador"]
+    # Cargar profesores una sola vez para usar en combos
+    profesores = obtener_profesores()
+    nombres_profesores = [p["nombre"] for p in profesores]
+    mapa_profesores = {p["nombre"]: p["id"] for p in profesores}
 
     with st.container(border=True):
         st.subheader(":material/description: Gestiona categorias de edad: crea, elimina o asigna profesor. Nada es fijo.")
@@ -52,22 +50,22 @@ def render_categorias() -> None:
                 
                 prof_sel = st.selectbox(
                     "Seleccionar profesor asignado", 
-                    roster, 
+                    nombres_profesores, 
                     index=None,
                     placeholder="Selecciona un profesor"
                 )
 
             st.write("")
-            crear = st.form_submit_button("CREAR CATEGORIA", use_container_width=True, type="primary")
+            crear = st.form_submit_button("CREAR CATEGORIA", width="stretch", type="primary")
 
             if crear:
                 if not nombre_nueva.strip():
                     st.error("Ingresa un nombre para la categoria.", icon=":material/error:")
                 else:
-                    profesor_final = prof_sel if prof_sel else ""
+                    profesor_final = mapa_profesores.get(prof_sel) if prof_sel else None
                     if crear_categoria(nombre_nueva, profesor_final):
                         st.session_state.msg_crear_exito = f"Categoria {nombre_nueva.strip()} creada correctamente."
-                        st.cache_data.clear()
+                        obtener_categorias.clear()
                         st.rerun()
 
     with st.container(border=True):
@@ -80,13 +78,13 @@ def render_categorias() -> None:
             st.error(st.session_state.msg_lista_error, icon=":material/error:")
             del st.session_state.msg_lista_error
 
-        categorias = obtener_categorias_config()
+        categorias = obtener_categorias()
         if not categorias:
             st.info("Aun no hay categorias creadas. Usa el formulario de arriba para crear la primera.")
             return
 
         for cat in categorias:
-            etiqueta_prof = cat["profesor"] or "Sin profesor asignado"
+            etiqueta_prof = cat.get("profesor_nombre", "Sin profesor asignado")
             with st.expander(f"{cat['nombre']} · {etiqueta_prof}"):
                 # roster ya fue cargado arriba
 
@@ -95,20 +93,20 @@ def render_categorias() -> None:
                     with ec1:
                         nuevo_prof_sel = st.selectbox(
                             "Seleccionar profesor asignado", 
-                            roster, 
+                            nombres_profesores, 
                             index=None,
                             placeholder="Selecciona un profesor"
                         )
                     with ec2:
                         st.write("")
                         st.write("")
-                        guardar = st.form_submit_button("Guardar profesor", use_container_width=True, type="primary")
+                        guardar = st.form_submit_button("Guardar profesor", width="stretch", type="primary")
 
                     if guardar:
-                        profesor_final = nuevo_prof_sel if nuevo_prof_sel else ""
+                        profesor_final = mapa_profesores.get(nuevo_prof_sel) if nuevo_prof_sel else None
                         if actualizar_profesor_categoria(cat["id"], profesor_final):
                             st.session_state.msg_lista_exito = f"Profesor actualizado correctamente para {cat['nombre']}."
-                            st.cache_data.clear()
+                            obtener_categorias.clear()
                             st.rerun()
                         else:
                             st.error("No se pudo actualizar el profesor", icon=":material/error:")
@@ -120,7 +118,7 @@ def render_categorias() -> None:
                     st.session_state[f"confirmar_eliminar_{cat['id']}"] = False
 
                 if not st.session_state[f"confirmar_eliminar_{cat['id']}"]:
-                    if st.button("Eliminar categoria", key=f"eliminar_{cat['id']}", use_container_width=True, type="secondary"):
+                    if st.button("Eliminar categoria", key=f"eliminar_{cat['id']}", width="stretch", type="secondary"):
                         jugadores_en_cat = obtener_jugadores(cat["id"])
                         if jugadores_en_cat:
                             st.session_state[f"confirmar_eliminar_{cat['id']}"] = True
@@ -128,17 +126,18 @@ def render_categorias() -> None:
                         else:
                             if eliminar_categoria(cat["id"]):
                                 st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada con éxito."
-                                st.cache_data.clear()
+                                obtener_categorias.clear()
+                                obtener_jugadores.clear()
                                 st.rerun()
                             else:
                                 st.error("Fallo al eliminar (revisa permisos o recarga la página).", icon=":material/error:")
                 else:
                     jugadores_en_cat = obtener_jugadores(cat["id"])
-                    st.warning(f"⚠️ Hay {len(jugadores_en_cat)} jugador(es) vinculados a esta categoría. ¿Estás seguro de eliminarla? Se desvincularán todos los jugadores de ella.", icon="⚠️")
+                    st.warning(f"Hay {len(jugadores_en_cat)} jugador(es) vinculados a esta categoría. ¿Estás seguro de eliminarla? Se desvincularán todos los jugadores de ella.", icon=":material/warning:")
                     
                     cc1, cc2 = st.columns(2)
                     with cc1:
-                        if st.button("Sí, eliminar", key=f"confirm_eliminar_{cat['id']}", use_container_width=True, type="primary"):
+                        if st.button("Sí, eliminar", key=f"confirm_eliminar_{cat['id']}", width="stretch", type="primary"):
                             desvincular_jugadores_categoria(cat["id"])
                             if eliminar_categoria(cat["id"]):
                                 st.session_state.msg_lista_exito = f"Categoría {cat['nombre']} eliminada y {len(jugadores_en_cat)} jugador(es) desvinculados."
@@ -146,11 +145,12 @@ def render_categorias() -> None:
                                 st.error("Fallo al eliminar la categoría.", icon=":material/error:")
                             
                             st.session_state[f"confirmar_eliminar_{cat['id']}"] = False
-                            st.cache_data.clear()
+                            obtener_categorias.clear()
+                            obtener_jugadores.clear()
                             st.rerun()
                     with cc2:
-                        if st.button("Cancelar", key=f"cancel_eliminar_{cat['nombre']}", use_container_width=True):
-                            st.session_state[f"confirmar_eliminar_{cat['nombre']}"] = False
+                        if st.button("Cancelar", key=f"cancel_eliminar_{cat['id']}", width="stretch"):
+                            st.session_state[f"confirmar_eliminar_{cat['id']}"] = False
                             st.rerun()
 
 if __name__ == '__main__':

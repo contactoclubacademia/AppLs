@@ -14,27 +14,18 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from estilos import inject_css
-from database import (obtener_jugadores, obtener_categorias, obtener_profesor_de,
+from database import (obtener_jugadores, obtener_categorias,
                       actualizar_jugador, eliminar_jugador, activar_jugador)
+from utils import format_cat, verificar_permisos
 
-
-
-def format_cat(cat):
-    if isinstance(cat, dict):
-        return cat["nombre"]
-    return cat
 
 def render_plantillas() -> None:
     """Modulo: listado general de jugadores inscritos (solo Administrador)."""
-    inject_css()
 
     # Verificación de permisos
-    permisos = st.session_state.user.get("permisos") or []
-    rol = st.session_state.user.get("rol")
-    if rol != "Administrador" and "Plantillas" not in permisos:
-        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+    if not verificar_permisos("Plantillas"):
         return
+
 
     st.title(":material/table: Plantillas y Registros")
     
@@ -57,9 +48,8 @@ def render_plantillas() -> None:
             m1, m2, m3 = st.columns(3)
             m1.metric("Total Jugadores", len(jugadores_todos))
             m2.metric("Categorias activas", len(categorias))
-            fecha_raw = str(jugadores_todos[-1].get("fecha_registro", ""))
-            fecha_corta = fecha_raw.split("T")[0] if "T" in fecha_raw else fecha_raw.split(" ")[0]
-            m3.metric("Ultimo registro", fecha_corta)
+            activos = len([j for j in jugadores_todos if j.get("estado") != "Inactivo"])
+            m3.metric("Jugadores Activos", activos)
 
             c_f1, c_f2 = st.columns(2)
             with c_f1:
@@ -85,7 +75,7 @@ def render_plantillas() -> None:
                 st.subheader(":material/list: Listado de Jugadores")
                 df = pd.DataFrame(jugadores_tabla)
                 
-                columnas_db = ["nombre", "rut", "categoria", "estado", "apoderado_nombre", "apoderado_telefono", "fecha_registro"]
+                columnas_db = ["nombre", "rut", "categoria", "estado", "apoderado_nombre", "apoderado_telefono"]
                 df = df[[col for col in columnas_db if col in df.columns]]
                 
                 if "estado" in df.columns:
@@ -93,17 +83,13 @@ def render_plantillas() -> None:
                 else:
                     df["estado"] = "Activo"
                 
-                if "fecha_registro" in df.columns:
-                    df["fecha_registro"] = df["fecha_registro"].apply(lambda x: str(x).split("T")[0] if "T" in str(x) else str(x).split(" ")[0])
-
                 df = df.rename(columns={
                     "nombre": "Nombre",
                     "rut": "RUT",
                     "categoria": "Categoria",
                     "estado": "Estado",
                     "apoderado_nombre": "Apoderado",
-                    "apoderado_telefono": "Telefono Apoderado",
-                    "fecha_registro": "Fecha Registro"
+                    "apoderado_telefono": "Telefono Apoderado"
                 })
 
                 st.dataframe(df, width="stretch", hide_index=True)
@@ -145,8 +131,10 @@ def render_plantillas() -> None:
                     c1, c2 = st.columns(2)
                     with c1:
                         nuevo_nombre = st.text_input("Nombre Completo *", value=j_data["nombre"])
-                        anio_actual = j_data.get("anio_nacimiento")
-                        if not isinstance(anio_actual, (int, float)):
+                        fecha_nac = j_data.get("fecha_nacimiento")
+                        try:
+                            anio_actual = int(str(fecha_nac).split("-")[0]) if fecha_nac else 2014
+                        except:
                             anio_actual = 2014
                         nuevo_anio = st.number_input("Año de Nacimiento *", value=int(anio_actual), step=1)
                     
@@ -182,7 +170,7 @@ def render_plantillas() -> None:
                     if btn_guardar:
                         nuevos_datos = {
                             "nombre": nuevo_nombre.strip(),
-                            "anio_nacimiento": nuevo_anio,
+                            "fecha_nacimiento": f"{int(nuevo_anio)}-01-01",
                             "categoria_id": nueva_categoria["id"] if isinstance(nueva_categoria, dict) else None,
                             "apoderado_nombre": nuevo_apo_nombre.strip(),
                             "apoderado_telefono": nuevo_apo_tel.strip(),
@@ -195,19 +183,19 @@ def render_plantillas() -> None:
                             st.error("Los campos marcados con * son obligatorios.", icon=":material/error:")
                         elif actualizar_jugador(j_data["id"], nuevos_datos):
                             st.session_state.msg_jugador_exito = f"Datos de {nuevo_nombre} actualizados correctamente."
-                            st.cache_data.clear()
+                            obtener_jugadores.clear()
                             st.rerun()
                             
                     if btn_eliminar:
                         if eliminar_jugador(j_data["id"]):
                             st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido dado de baja."
-                            st.cache_data.clear()
+                            obtener_jugadores.clear()
                             st.rerun()
                             
                     if btn_activar:
                         if activar_jugador(j_data["id"], nueva_categoria["id"] if isinstance(nueva_categoria, dict) else None):
                             st.session_state.msg_jugador_exito = f"Jugador {j_data['nombre']} ha sido restaurado exitosamente."
-                            st.cache_data.clear()
+                            obtener_jugadores.clear()
                             st.rerun()
 
     with tab3:
@@ -256,9 +244,9 @@ def render_plantillas() -> None:
                         st.error("El archivo no puede tener más de 500 registros.", icon=":material/error:")
                     elif len(df_subido) > 0:
                         st.write(f"Se encontraron **{len(df_subido)}** registros en el archivo. Previsualización:")
-                        st.dataframe(df_subido.head(), use_container_width=True)
+                        st.dataframe(df_subido.head(), width="stretch")
                         
-                        if st.button("Procesar y Guardar Jugadores", type="primary", use_container_width=True):
+                        if st.button("Procesar y Guardar Jugadores", type="primary", width="stretch"):
                             from database import guardar_jugador
                             from datetime import datetime
                             cat_map = {c["nombre"].strip().lower(): c["id"] for c in categorias}
@@ -296,14 +284,14 @@ def render_plantillas() -> None:
                                         jugador = {
                                             "rut": rut_str,
                                             "nombre": nombre_str,
-                                            "anio_nacimiento": anio,
+                                            "fecha_nacimiento": f"{anio}-01-01",
                                             "categoria_id": cat_id,
+                                            "estado": "Activo",
                                             "apoderado_nombre": str(row.get("Nombre Apoderado", "")).strip().replace("nan", ""),
                                             "apoderado_rut": str(row.get("RUT Apoderado", "")).strip().replace("nan", ""),
                                             "apoderado_telefono": str(row.get("Telefono Apoderado", "")).strip().replace("nan", ""),
                                             "telefono_emergencia": str(row.get("Telefono Emergencia", "")).strip().replace("nan", ""),
-                                            "apoderado_correo": str(row.get("Correo Apoderado", "")).strip().replace("nan", ""),
-                                            "fecha_registro": datetime.now().isoformat()
+                                            "apoderado_correo": str(row.get("Correo Apoderado", "")).strip().replace("nan", "")
                                         }
                                         
                                         if guardar_jugador(jugador):

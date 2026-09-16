@@ -2,78 +2,433 @@
 =============================================================================
  MODULO: LOGIN / AUTENTICACION
 =============================================================================
-Pantalla de autenticacion centrada, en formato tarjeta.
-Diseno corporativo: contenedores con borde, botones primary, iconos Material.
+Pantalla de login de pantalla completa.
+Estrategia CSS: el bloque contenedor de Streamlit (block-container) es la
+tarjeta blanca; el fondo rojo con pinceladas SVG se aplica al .stApp.
+No se usa position:fixed para envolver widgets de Streamlit (incompatible).
 =============================================================================
 """
-
 
 import streamlit as st
 from datetime import datetime, timedelta
 
 from database import autenticar_usuario
-from estilos import inject_css
 
 
+# ---------------------------------------------------------------------------
+# CSS DE PANTALLA COMPLETA – estrategia: block-container = tarjeta blanca
+# ---------------------------------------------------------------------------
+_LOGIN_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap');
+
+/* ── Tipografía global en login ── */
+html, body, [class*="css"], .stApp * {
+    font-family: 'Poppins', sans-serif !important;
+}
+
+/* ── Fondo rojo de pantalla completa con pinceladas SVG ── */
+.stApp {
+    min-height: 100vh;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='900' viewBox='0 0 1200 900'%3E%3Cpath d='M-50 200 Q200 130 420 240 Q640 350 860 180 Q1080 10 1280 140' stroke='%23000000' stroke-width='90' fill='none' stroke-linecap='round' opacity='0.22'/%3E%3Cpath d='M-80 420 Q250 340 500 460 Q750 580 1000 400 Q1150 290 1280 370' stroke='%23000000' stroke-width='55' fill='none' stroke-linecap='round' opacity='0.13'/%3E%3Cpath d='M800 -60 Q780 220 840 440 Q900 660 790 860 Q700 980 760 1000' stroke='%23FFFFFF' stroke-width='65' fill='none' stroke-linecap='round' opacity='0.07'/%3E%3Cpath d='M920 -20 Q900 160 940 340 Q980 520 920 700' stroke='%23FFFFFF' stroke-width='35' fill='none' stroke-linecap='round' opacity='0.05'/%3E%3Cpath d='M-60 700 Q220 620 440 730 Q660 840 900 700 Q1080 590 1280 680' stroke='%23000000' stroke-width='75' fill='none' stroke-linecap='round' opacity='0.18'/%3E%3Cpath d='M-30 860 Q300 790 550 870 Q800 950 1100 820 Q1200 780 1280 810' stroke='%23FFFFFF' stroke-width='42' fill='none' stroke-linecap='round' opacity='0.05'/%3E%3Cpath d='M100 -40 Q130 100 80 260 Q30 420 120 560' stroke='%23000000' stroke-width='50' fill='none' stroke-linecap='round' opacity='0.1'/%3E%3C/svg%3E")
+        center center / cover no-repeat,
+        radial-gradient(ellipse at 15% 45%, #7A0015 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 15%, #D41030 0%, transparent 50%),
+        linear-gradient(145deg, #8B0000 0%, #C8102E 45%, #960018 100%) !important;
+    background-attachment: fixed !important;
+}
+
+/* ── Ocultar chrome de Streamlit ── */
+[data-testid="stHeader"]       { display: none !important; }
+#MainMenu                       { visibility: hidden !important; }
+footer                          { visibility: hidden !important; }
+[data-testid="stToolbar"]       { visibility: hidden !important; height: 0 !important; }
+[data-testid="stDecoration"]    { display: none !important; }
+
+/* ── El block-container SE CONVIERTE en la tarjeta blanca ── */
+div.block-container {
+    max-width: 440px !important;
+    width: 440px !important;
+    margin-top: 60px !important;
+    margin-bottom: 80px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding: 42px 44px 40px 44px !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    border-radius: 22px !important;
+    box-shadow:
+        0 30px 70px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255,255,255,0.12) !important;
+    backdrop-filter: blur(10px) !important;
+    animation: cardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+    position: relative;
+    z-index: 10;
+}
+
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(28px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Logo: círculo rojo centrado ── */
+.login-logo-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 18px;
+}
+.login-logo-ring {
+    width: 86px;
+    height: 86px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #C8102E 0%, #8B0000 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 28px rgba(200, 16, 46, 0.5);
+    font-size: 40px;
+    line-height: 1;
+    border: 3px solid rgba(255,255,255,0.2);
+}
+
+/* ── Tipografía del encabezado ── */
+.login-academy-name {
+    font-size: 21px !important;
+    font-weight: 900 !important;
+    color: #1A1A1A !important;
+    letter-spacing: 0.5px !important;
+    line-height: 1.2 !important;
+    margin: 0 0 8px 0 !important;
+    text-align: center !important;
+    text-transform: uppercase !important;
+}
+.login-subtitle-text {
+    font-size: 13px !important;
+    color: #6B7280 !important;
+    font-weight: 500 !important;
+    margin: 0 0 0 0 !important;
+    text-align: center !important;
+}
+.login-divider {
+    width: 50px;
+    height: 3px;
+    background: linear-gradient(90deg, #C8102E, #FF4D6D);
+    border-radius: 2px;
+    margin: 18px auto 26px auto;
+}
+
+/* ── Labels de los inputs ── */
+div.block-container .stTextInput > label,
+div.block-container [data-testid="stTextInput"] > label {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #C8102E !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.8px !important;
+    margin-bottom: 4px !important;
+}
+
+/* ── Inputs ── */
+div.block-container .stTextInput > div > div > input {
+    border: 2px solid #E5E7EB !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+    font-size: 14px !important;
+    color: #1A1A1A !important;
+    background: #F9FAFB !important;
+    font-family: 'Poppins', sans-serif !important;
+    transition: all 0.2s ease !important;
+    height: 48px !important;
+}
+div.block-container .stTextInput > div > div > input:focus {
+    border-color: #C8102E !important;
+    box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.13) !important;
+    background: #FFFFFF !important;
+    outline: none !important;
+}
+div.block-container .stTextInput > div > div > input::placeholder {
+    color: #9CA3AF !important;
+    font-weight: 400 !important;
+}
+
+/* ── Ocultar "Press Enter to submit form" de Streamlit ── */
+[data-testid="InputInstructions"] {
+    display: none !important;
+}
+/* Por si cambia de selector en futuras versiones de Streamlit */
+.stTextInput small,
+.stTextInput [class*="instructions"],
+.stTextInput [class*="InputInstructions"] {
+    display: none !important;
+}
+
+/* ── Ícono del ojo (campo contraseña): alineación correcta ── */
+div.block-container .stTextInput > div {
+    position: relative !important;
+}
+div.block-container .stTextInput > div > div {
+    align-items: center !important;
+}
+/* El botón/ícono del ojo que Streamlit pone dentro del input */
+div.block-container .stTextInput > div > div > button[kind="icon"],
+div.block-container .stTextInput > div > div > div > button {
+    position: absolute !important;
+    right: 12px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    color: #6B7280 !important;
+    cursor: pointer !important;
+    z-index: 2 !important;
+}
+
+
+/* ── Botón de submit ── */
+div.block-container .stFormSubmitButton > button {
+    background: linear-gradient(135deg, #C8102E 0%, #8E0B20 100%) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 10px !important;
+    padding: 0 22px !important;
+    height: 50px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    width: 100% !important;
+    margin-top: 10px !important;
+    box-shadow: 0 6px 22px rgba(200, 16, 46, 0.45) !important;
+    transition: all 0.22s ease !important;
+    font-family: 'Poppins', sans-serif !important;
+}
+div.block-container .stFormSubmitButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 12px 30px rgba(200, 16, 46, 0.6) !important;
+}
+div.block-container .stFormSubmitButton > button:active {
+    transform: translateY(0) !important;
+}
+
+/* ── Alertas dentro del card: aspecto limpio y profesional ── */
+div.block-container [data-testid="stAlert"] {
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    margin-top: 10px !important;
+    padding: 10px 14px !important;
+    font-family: 'Poppins', sans-serif !important;
+    line-height: 1.5 !important;
+}
+/* Error: borde sutil rojo */
+div.block-container [data-testid="stAlert"][data-baseweb="notification"][kind="error"],
+div.block-container [data-testid="stAlert"].st-emotion-cache-1k5yxzy {
+    border-left: none !important;
+}
+/* Quitar el borde izquierdo grueso de todos los alerts en el card */
+div.block-container [data-testid="stAlert"] > div {
+    border-left: none !important;
+}
+
+/* ── Ocultar borde del stForm ── */
+div.block-container [data-testid="stForm"] {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+
+/* ── Textos del pie de tarjeta ── */
+.login-footer-hint {
+    font-size: 12px;
+    color: #9CA3AF;
+    text-align: center;
+    margin-top: 20px;
+    line-height: 1.6;
+}
+.login-founded {
+    font-size: 11px;
+    color: #B0B7C3;
+    text-align: center;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+/* ── Barra de pie de página (fuera de la tarjeta) ── */
+.login-page-footer {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(0, 0, 0, 0.55);
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 11.5px;
+    text-align: center;
+    padding: 11px 20px;
+    z-index: 9999;
+    backdrop-filter: blur(6px);
+    font-family: 'Poppins', sans-serif;
+    letter-spacing: 0.2px;
+}
+
+/* ── Quitar márgenes extra de Streamlit dentro del card ── */
+div.block-container .element-container,
+div.block-container [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+}
+div.block-container .stTextInput {
+    margin-bottom: 14px !important;
+}
+
+/* ── Responsive móvil ── */
+@media (max-width: 520px) {
+    div.block-container {
+        width: 92vw !important;
+        max-width: 92vw !important;
+        padding: 28px 24px 32px 24px !important;
+        margin-top: 30px !important;
+    }
+    .login-academy-name { font-size: 18px !important; }
+}
+</style>
+"""
+
+_FOOTER_HTML = """
+<div class="login-page-footer">
+    © 2024 Academia Deportiva La Serena &nbsp;·&nbsp; Sistema de Gestión Deportiva &nbsp;·&nbsp; Todos los derechos reservados.
+</div>
+"""
+
+
+# ---------------------------------------------------------------------------
+# CACHE de intentos fallidos
+# ---------------------------------------------------------------------------
+@st.cache_resource
+def obtener_registro_bloqueos():
+    """Almacena los intentos fallidos a nivel de servidor (sobrevive a recargas de página)."""
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# RENDER PRINCIPAL
+# ---------------------------------------------------------------------------
 def render_login() -> None:
-    """Pantalla de autenticacion centrada, en formato tarjeta."""
-    inject_css()
+    """Pantalla de login de pantalla completa. El block-container es la tarjeta."""
 
-    # Protección contra fuerza bruta
-    if "login_intentos" not in st.session_state:
-        st.session_state.login_intentos = 0
-    if "login_bloqueado_hasta" not in st.session_state:
-        st.session_state.login_bloqueado_hasta = None
+    bloqueos = obtener_registro_bloqueos()
 
-    # Espaciadores físicos infalibles para empujar el login hacia abajo
-    st.markdown("<br><br><br><br>", unsafe_allow_html=True)
-    
-    # Hacer la columna central un poco más ancha (de 1.2 a 1.6)
-    col_izq, col_centro, col_der = st.columns([1, 1.6, 1])
+    # 1) Inyectar CSS
+    st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
 
-    with col_centro:
-        with st.container(border=True):
-            st.markdown(
-                f"""
-                <div class="login-card">
-                    <h2 class="login-title">Academia La Serena</h2>
-                    <p class="login-subtitle">Sistema de Gestion Deportiva</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    # 2) Logo + encabezado
+    st.markdown(
+        """
+        <div class="login-logo-wrap">
+            <div class="login-logo-ring">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                     width="46" height="46" fill="white" aria-hidden="true">
+                    <!-- Escudo deportivo -->
+                    <path d="M12 1 L3 5 L3 11 C3 16.55 6.84 21.74 12 23
+                             C17.16 21.74 21 16.55 21 11 L21 5 Z"/>
+                </svg>
+            </div>
+        </div>
+        <p class="login-academy-name">Academia Deportiva<br>La Serena</p>
+        <p class="login-subtitle-text">Ingreso al Portal de Gesti&#243;n</p>
+        <div class="login-divider"></div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-            with st.form("form_login", clear_on_submit=False):
-                st.subheader(":material/login: Iniciar Sesion")
-                username = st.text_input("Usuario", placeholder="Ingresa tu usuario")
-                password = st.text_input("Contrasena", type="password", placeholder="Ingresa tu contrasena")
-                enviado = st.form_submit_button("INGRESAR", width="stretch", type="primary")
+    # 3) Formulario de Streamlit (sigue en el flujo normal del card)
+    with st.form("form_login", clear_on_submit=False):
+        email = st.text_input(
+            "Correo Electrónico",
+            placeholder="tucorreo@ejemplo.com",
+            key="login_email",
+        )
+        password = st.text_input(
+            "Contraseña",
+            type="password",
+            placeholder="••••••••",
+            key="login_password",
+        )
+        enviado = st.form_submit_button("INICIAR SESIÓN", use_container_width=True)
 
+        if enviado:
+            email_limpio = email.strip().lower()
+
+            if not email_limpio:
+                st.warning("Ingresa tu correo electrónico para continuar.")
+            else:
+                if email_limpio not in bloqueos:
+                    bloqueos[email_limpio] = {
+                        "intentos": 0,
+                        "bloqueado_hasta": None,
+                        "ultimo_intento": None,
+                    }
+
+                estado = bloqueos[email_limpio]
                 ahora = datetime.now()
-                if st.session_state.login_bloqueado_hasta and ahora < st.session_state.login_bloqueado_hasta:
-                    restante = int((st.session_state.login_bloqueado_hasta - ahora).total_seconds())
-                    st.error(f"Demasiados intentos fallidos. Intenta de nuevo en {restante} segundos.")
-                elif enviado:
-                    # Si el bloqueo ya expiró, resetear el contador
-                    if st.session_state.login_bloqueado_hasta and ahora >= st.session_state.login_bloqueado_hasta:
-                        st.session_state.login_intentos = 0
-                        st.session_state.login_bloqueado_hasta = None
-                    usuario = autenticar_usuario(username.strip(), password)
-                    if usuario:
-                        st.session_state.login_intentos = 0
-                        st.session_state.login_bloqueado_hasta = None
-                        st.session_state.authenticated = True
-                        st.session_state.user = usuario
-                        st.rerun()
-                    else:
-                        st.session_state.login_intentos += 1
-                        intentos_restantes = 5 - st.session_state.login_intentos
-                        if intentos_restantes <= 0:
-                            st.session_state.login_bloqueado_hasta = ahora + timedelta(minutes=5)
-                            st.error("Demasiados intentos. Cuenta bloqueada por 5 minutos.")
-                        else:
-                            st.error(f"Usuario o contrasena incorrectos. ({intentos_restantes} intentos restantes)")
 
-if __name__ == '__main__':
+                # Limpiar historial si pasaron 10 min sin bloqueo activo
+                if (
+                    estado["intentos"] > 0
+                    and estado.get("ultimo_intento")
+                    and not estado["bloqueado_hasta"]
+                ):
+                    if (ahora - estado["ultimo_intento"]).total_seconds() > 600:
+                        estado["intentos"] = 0
+                        estado["ultimo_intento"] = None
+
+                # Verificar bloqueo activo
+                if estado["bloqueado_hasta"] and ahora < estado["bloqueado_hasta"]:
+                    restante = int((estado["bloqueado_hasta"] - ahora).total_seconds())
+                    minutos = restante // 60
+                    segundos = restante % 60
+                    st.error(f"Acceso bloqueado. Intenta de nuevo en {minutos}m {segundos}s.")
+                else:
+                    # Expiró el bloqueo → resetear
+                    if estado["bloqueado_hasta"] and ahora >= estado["bloqueado_hasta"]:
+                        estado["intentos"] = 0
+                        estado["bloqueado_hasta"] = None
+                        estado["ultimo_intento"] = None
+
+                    if not password:
+                        st.warning("Ingresa tu contraseña para continuar.")
+                    else:
+                        usuario = autenticar_usuario(email_limpio, password)
+                        if usuario:
+                            estado["intentos"] = 0
+                            estado["bloqueado_hasta"] = None
+                            estado["ultimo_intento"] = None
+                            st.session_state.authenticated = True
+                            st.session_state.user = usuario
+                            st.rerun()
+                        else:
+                            estado["intentos"] += 1
+                            estado["ultimo_intento"] = ahora
+                            intentos_restantes = 5 - estado["intentos"]
+
+                            if intentos_restantes <= 0:
+                                estado["bloqueado_hasta"] = ahora + timedelta(minutes=5)
+                                st.error("Demasiados intentos fallidos. Cuenta bloqueada por 5 minutos.")
+                            else:
+                                plural = "s" if intentos_restantes != 1 else ""
+                                st.error(f"Correo o contraseña incorrectos. ({intentos_restantes} intento{plural} restante{plural}).")
+
+    # 4) Pie de tarjeta
+    st.markdown(
+        """
+        <p class="login-footer-hint">¿Problemas para ingresar? Contacta al administrador.</p>
+        <p class="login-founded">Fundada el 21 de Agosto de 1987 · Chile</p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 5) Footer fijo de la página
+    st.markdown(_FOOTER_HTML, unsafe_allow_html=True)
+
+
+if __name__ == "__main__":
     import streamlit as st
-    st.switch_page('app.py')
+    st.switch_page("app.py")

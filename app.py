@@ -8,16 +8,16 @@ registro de jugadores, plantillas y control de asistencia.
 
 INSTALACION DE DEPENDENCIAS
 -----------------------------------------------------------------------------
-    pip install streamlit streamlit-option-menu pandas
+    pip install -r requirements.txt
 
 EJECUCION
 -----------------------------------------------------------------------------
     streamlit run app.py
 
-CREDENCIALES DE DEMOSTRACION
+CREDENCIALES
 -----------------------------------------------------------------------------
-    Administrador   ->  usuario: admin   | contraseña: admin123
-    Profesor/Entren.->  usuario: profe   | contraseña: profe123
+    Las credenciales se gestionan desde el modulo de Administracion.
+    Consultar al administrador del sistema para obtener acceso.
 
 ARQUITECTURA MODULAR
 -----------------------------------------------------------------------------
@@ -34,7 +34,6 @@ ARQUITECTURA MODULAR
 """
 
 import streamlit as st
-from streamlit_option_menu import option_menu
 from html import escape as html_escape
 
 from database import autenticar_usuario
@@ -110,70 +109,59 @@ def render_sidebar() -> str:
 
         opciones_disponibles = st.session_state.user.get("permisos") or []
         
-        # Diccionario maestro de iconos
-        iconos_maestros = {
-            "Registrar Jugador": "person-plus-fill",
-            "Plantillas": "table",
-            "Control de Asistencia": "calendar-check",
-            "Categorias": "diagram-3",
-            "Pagos": "cash-coin",
-            "Administración": "shield-lock-fill"
-        }
+        # Módulos válidos del sistema
+        modulos_validos = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos", "Administración"]
         
         if rol == "Administrador":
-            # El administrador ve todo, o forzamos sus opciones
-            opciones = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos", "Administración"]
+            opciones = modulos_validos
         else:
             opciones = opciones_disponibles
             if not opciones:
                 opciones = ["Control de Asistencia"] # Fallback
 
-        # Asegurarse de no mostrar opciones que no esten en el diccionario maestro o rutas (por si un nombre esta mal)
-        opciones = [opt for opt in opciones if opt in iconos_maestros]
+        # Filtrar solo opciones válidas
+        opciones = [opt for opt in opciones if opt in modulos_validos]
         
         if not opciones:
             st.error("Tu usuario no tiene módulos asignados.")
             return None
 
-        iconos = [iconos_maestros.get(op, "circle") for op in opciones]
-
         if "current_page" not in st.session_state or st.session_state.current_page not in opciones:
             st.session_state.current_page = opciones[0]
 
-        seleccion = option_menu(
-            menu_title=None,
-            options=opciones,
-            icons=iconos,
-            default_index=opciones.index(st.session_state.current_page),
-            styles={
-                "container": {"padding": "0", "background-color": "#111111"},
-                "icon": {"color": "#CCCCCC", "font-size": "18px"},
-                "nav-link": {
-                    "font-size": "15px",
-                    "text-align": "left",
-                    "margin": "4px 0",
-                    "padding": "12px 14px",
-                    "border-radius": "8px",
-                    "color": "#CCCCCC",
-                    "font-weight": "500",
-                    "--hover-color": "#222222",
-                },
-                "nav-link-selected": {
-                    "background-color": "#D32F2F",
-                    "color": "#FFFFFF",
-                    "font-weight": "700",
-                },
-            },
+        # Iconos para cada opción (Material Icons nativos)
+        iconos_nav = {
+            "Registrar Jugador": ":material/person_add:",
+            "Plantillas": ":material/table_chart:",
+            "Control de Asistencia": ":material/calendar_month:",
+            "Categorias": ":material/category:",
+            "Pagos": ":material/payments:",
+            "Administración": ":material/admin_panel_settings:"
+        }
+
+        seleccion = st.radio(
+            "Navegación",
+            opciones,
+            index=opciones.index(st.session_state.current_page),
+            format_func=lambda x: f"{iconos_nav.get(x, '')}\u00A0\u00A0{x}",
+            label_visibility="collapsed",
+            key="main_nav_radio",
         )
+
+        st.session_state.current_page = seleccion
 
         st.markdown("<div class='sidebar-spacer'></div>", unsafe_allow_html=True)
         
         # Opciones extra
         st.markdown("<div style='margin-top: auto;'>", unsafe_allow_html=True)
         
-        if st.button("Cerrar Sesión", type="secondary", use_container_width=True):
+        if st.button("Cerrar Sesión", type="secondary", width="stretch"):
             st.session_state.authenticated = False
             st.session_state.user = None
+            st.session_state.pop("access_token", None)
+            st.session_state.pop("refresh_token", None)
+            st.session_state.pop("supabase_client", None)
+            st.session_state.pop("_supabase_session_set", None)
             try:
                 from database import get_supabase
                 get_supabase().auth.sign_out()
@@ -185,11 +173,6 @@ def render_sidebar() -> str:
             '<p class="sidebar-footer-note">Fuente de datos: Supabase (Remota)</p>',
             unsafe_allow_html=True,
         )
-
-    # Actualizacion segura
-    if seleccion != st.session_state.current_page:
-        st.session_state.current_page = seleccion
-        st.rerun()
 
     return st.session_state.current_page
 
@@ -207,11 +190,17 @@ def main() -> None:
     _inject_global_css()
 
     if not st.session_state.authenticated:
-        # Ocultar sidebar SOLO en pagina de login
+        # Ocultar sidebar en la pantalla de login
         st.markdown(
             """
             <style>
                 [data-testid="stSidebar"] { display: none !important; }
+                div.block-container {
+                    max-width: 440px !important;
+                    padding-top: 0 !important;
+                    padding-bottom: 0 !important;
+                }
+                div.block-container h1 { margin-top: 0 !important; }
             </style>
             """,
             unsafe_allow_html=True,
@@ -227,8 +216,6 @@ def main() -> None:
 
     # Routing a modulos
     _route(seleccion)
-
-
 
 
 

@@ -73,34 +73,63 @@ def inject_css() -> None:
             --primary-color: #C8102E;
         }
 
-        .stApp { background-color: #F4F5F7; color: #1A1A1A; }
+        /* ── Fondo principal: gradiente sutil en vez de gris plano ── */
+        .stApp {
+            background:
+                radial-gradient(ellipse at 0% 0%, rgba(200,16,46,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 100% 100%, rgba(200,16,46,0.03) 0%, transparent 50%),
+                linear-gradient(160deg, #F0F1F4 0%, #F5F6F8 50%, #EDEEF2 100%);
+            color: #1A1A1A;
+        }
 
-        /* Ojo: usamos ".main" (NO ".stApp") para no pisar el color
-           claro del texto del sidebar oscuro, que vive más abajo. */
+        div.block-container {
+            padding-top: 1.2rem !important;
+            padding-bottom: 1rem !important;
+            margin-top: 0 !important;
+            max-width: 1200px;
+        }
+
+        /* Forzar texto legible en el contenido principal */
         .main p, .main span, .main label,
         .main h1, .main h2, .main h3, .main h4, .main h5, .main h6 {
             color: #1A1A1A;
         }
 
-        /* En versiones modernas, el header fantasma ocupa 60px. Lo hacemos invisible pero SIN borrarlo del DOM para no perder el botón del sidebar. */
+        /* Header fantasma invisible */
         [data-testid="stHeader"], .stApp > header {
             background: transparent !important;
             height: 0px !important;
             min-height: 0px !important;
         }
 
-        div.block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 0rem !important;
-            margin-top: 0 !important;
-            max-width: 1200px;
-        }
-        
-        /* Ajustar el primer título para que alinee perfecto con el botón */
+        /* Ajustar el primer título */
         div.block-container h1 {
             margin-top: -1rem !important;
             padding-top: 0 !important;
         }
+
+        /* ── Tarjetas / contenedores con borde: más profundidad ── */
+        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+            border-radius: 14px !important;
+        }
+        /* Contenedores con border=True de Streamlit */
+        [data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: #FFFFFF !important;
+            border-radius: 14px !important;
+            border: 1px solid #E4E6EA !important;
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.06),
+                0 8px 24px rgba(0, 0, 0, 0.05),
+                inset 0 1px 0 rgba(255,255,255,0.8) !important;
+            transition: box-shadow 0.2s ease !important;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.09),
+                0 12px 32px rgba(0, 0, 0, 0.07),
+                inset 0 1px 0 rgba(255,255,255,0.9) !important;
+        }
+
 
         /* ==================== SIDEBAR ==================== */
         [data-testid="stSidebar"] {
@@ -130,6 +159,92 @@ def inject_css() -> None:
         }
         .sidebar-spacer { margin-top: 30px; }
         .sidebar-footer-note { font-size: 11px; color: #7A7A7A; text-align: center; margin-top: 10px; }
+
+        /* ==================== SIDEBAR NAV (st.radio como menú) ==================== */
+        /* Ocultar el circulo del radio */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+            display: none !important;
+        }
+        /* Marco principal estético para los módulos */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] {
+            gap: 4px !important;
+            padding: 14px 10px !important;
+            border-radius: 12px !important;
+            background-color: #161616 !important;
+            border: 1px solid #2A2A2A !important;
+            position: relative;
+            margin: 0 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        /* Acentos en las esquinas (arriba izquierda y abajo derecha) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"]::after {
+            content: '';
+            position: absolute;
+            top: -1px; left: -1px;
+            width: 25px; height: 25px;
+            border-top: 2px solid #C8102E;
+            border-left: 2px solid #C8102E;
+            border-top-left-radius: 12px;
+            pointer-events: none;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"]::before {
+            content: '';
+            position: absolute;
+            bottom: -1px; right: -1px;
+            width: 25px; height: 25px;
+            border-bottom: 2px solid #C8102E;
+            border-right: 2px solid #C8102E;
+            border-bottom-right-radius: 12px;
+            pointer-events: none;
+        }
+        /* Estilo base de cada opción (el contenedor label) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label {
+            padding: 14px 16px !important;
+            border-radius: 8px !important;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin: 0 !important;
+            background-color: transparent;
+            width: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        /* Hover */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+            background-color: #222222 !important;
+        }
+        /* Opción seleccionada */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+            background-color: #D32F2F !important;
+        }
+        
+        /* Contenedor del texto e icono (el párrafo interno) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label p {
+            font-size: 15.5px !important;
+            color: #CCCCCC;
+            font-weight: 500;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            margin: 0 !important;
+            padding-left: 4px !important;
+        }
+
+        
+        /* Texto e icono seleccionado */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) p,
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) span {
+            color: #FFFFFF !important;
+            font-weight: 700 !important;
+        }
+
+        /* Estilizar específicamente el icono material */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label span.material-symbols-rounded {
+            font-size: 21px !important;
+            margin-right: 12px !important;
+        }
 
         [data-testid="stSidebar"] .stButton>button {
             background-color: transparent;
@@ -166,25 +281,12 @@ def inject_css() -> None:
             background: #22C55E; margin-right: 6px;
         }
 
-        /* ==================== LOGIN ==================== */
-        .login-wrapper { padding-top: 130px; }
-        .login-card {
-            text-align: center; background: #FFFFFF;
-            padding: 42px 30px 12px 30px; border-radius: 16px 16px 0 0;
-        }
-        .login-logo { font-size: 50px; line-height: 1; }
-        .login-title { font-weight: 800; letter-spacing: 1px; color: #1A1A1A; margin: 10px 0 0 0; }
-        .login-subtitle { color: #6B7280; font-size: 14px; margin-top: 3px; }
-        .login-hint { text-align: center; color: #9CA3AF; font-size: 12px; margin-top: 12px; }
-
-        div[data-testid="stForm"] {
-            background: #FFFFFF;
-            padding: 26px 35px 30px 35px;
-            border-radius: 0 0 16px 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
-            border: 1px solid #E2E4E8;
-            border-top: none;
-        }
+        /* ==================== LOGIN ====================
+           El diseño completo del login (fondo, tarjeta, inputs, botón)
+           es autogestionado por pages/login.py via CSS inyectado.
+           Aquí solo dejamos un reset mínimo para no interferir. */
+        /* No se aplican estilos globales al formulario en la pantalla de login;
+           el login.py inyecta su propio CSS de pantalla completa. */
 
         /* ==================== BOTONES ==================== */
         .stButton>button, .stFormSubmitButton>button {

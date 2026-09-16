@@ -13,26 +13,17 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
-from estilos import inject_css
+from utils import format_cat, MESES, verificar_permisos
 from database import (obtener_jugadores, obtener_categorias,
                       guardar_pago, obtener_pagos, actualizar_pago, eliminar_pago)
 
-
-def format_cat(cat):
-    if isinstance(cat, dict):
-        return cat["nombre"]
-    return cat
-
 def render_pagos() -> None:
     """Modulo: registro y visualizacion de pagos de mensualidades (solo Administrador)."""
-    inject_css()
 
     # Verificación de permisos
-    permisos = st.session_state.user.get("permisos") or []
-    rol = st.session_state.user.get("rol")
-    if rol != "Administrador" and "Pagos" not in permisos:
-        st.error("No tienes permisos para acceder a este módulo.", icon=":material/error:")
+    if not verificar_permisos("Pagos"):
         return
+
 
     st.title(":material/attach_money: Registro de Pagos")
 
@@ -92,13 +83,11 @@ def render_pagos() -> None:
                 with st.form("form_registrar_pago", clear_on_submit=True):
                     col_m1, col_m2 = st.columns(2)
                     with col_m1:
-                        meses = [
-                            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-                            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-                        ]
                         mes_actual_idx = datetime.now().month - 1
-                        mes_sel = st.selectbox("Mes Correspondiente *", meses, index=mes_actual_idx)
+                        mes_sel = st.selectbox("Mes Correspondiente *", MESES, index=mes_actual_idx)
 
+                        anio_sel = st.selectbox("Año Correspondiente *", [datetime.now().year - 1, datetime.now().year, datetime.now().year + 1], index=1)
+                        
                         monto = st.number_input(
                             "Monto pagado ($) *",
                             min_value=0, value=30000, step=5000
@@ -114,13 +103,14 @@ def render_pagos() -> None:
                         pago_dict = {
                             "jugador_id": jugador_sel["id"],
                             "mes_correspondiente": mes_sel,
+                            "anio_correspondiente": anio_sel,
                             "monto": int(monto),
-                            "metodo": metodo_pago,
+                            "metodo_pago": metodo_pago,
                             "fecha_pago": fecha_pago.strftime("%Y-%m-%d")
                         }
                         if guardar_pago(pago_dict):
                             st.session_state.msg_pago_exito = f"Pago de ${monto:,} correspondiente a {mes_sel} para el jugador {jugador_sel['nombre']} registrado correctamente."
-                            st.cache_data.clear()
+                            obtener_pagos.clear()
                             st.rerun()
                         else:
                             st.error("Ocurrio un error al registrar el pago.", icon=":material/error:")
@@ -134,9 +124,8 @@ def render_pagos() -> None:
             st.subheader(":material/filter_list: Filtros de Fecha")
             col_f1, col_f2 = st.columns(2)
             with col_f1:
-                meses_todos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                 mes_actual_idx = datetime.now().month - 1
-                mes_hist = st.selectbox("Mes a visualizar", ["Todos"] + meses_todos, index=mes_actual_idx + 1, key="mes_hist")
+                mes_hist = st.selectbox("Mes a visualizar", ["Todos"] + MESES, index=mes_actual_idx + 1, key="mes_hist")
             with col_f2:
                 anio_actual = datetime.now().year
                 anios = [str(a) for a in range(2024, anio_actual + 2)]
@@ -185,7 +174,7 @@ def render_pagos() -> None:
                     with st.container(border=True):
                         st.subheader(":material/list: Listado de Pagos")
                         df_pagos = pd.DataFrame(pagos_mostrar)[
-                            ["jugador_nombre", "jugador_rut", "categoria", "mes_correspondiente", "monto", "metodo", "fecha_pago"]
+                            ["jugador_nombre", "jugador_rut", "categoria", "mes_correspondiente", "monto", "metodo_pago", "fecha_pago"]
                         ]
                         df_pagos.columns = [
                             "Jugador", "RUT", "Categoria", "Mes", "Monto ($)", "Método", "Fecha Pago"
@@ -225,18 +214,20 @@ def render_pagos() -> None:
             st.subheader(":material/filter_list: Seleccionar Periodo")
             col_fm1, col_fm2 = st.columns(2)
             with col_fm1:
-                meses_todos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                 mes_actual_idx = datetime.now().month - 1
-                mes_mod = st.selectbox("Mes", ["Todos"] + meses_todos, index=mes_actual_idx + 1, key="mes_mod")
+                mes_mod = st.selectbox("Mes", ["Todos"] + MESES, index=mes_actual_idx + 1, key="mes_mod")
             with col_fm2:
                 anio_actual = datetime.now().year
                 anios = [str(a) for a in range(2024, anio_actual + 2)]
                 anio_mod = st.selectbox("Año", ["Todos"] + anios, index=anios.index(str(anio_actual)) + 1, key="anio_mod")
 
-            mes_q_mod = None if mes_mod == "Todos" else mes_mod
-            anio_q_mod = None if anio_mod == "Todos" else anio_mod
-            
-        pagos_lista_mod = obtener_pagos(mes=mes_q_mod, anio=anio_q_mod)
+            # We can re-use the exact same list to avoid double querying the DB if filters match
+            if mes_hist == mes_mod and anio_hist == anio_mod:
+                pagos_lista_mod = pagos_lista
+            else:
+                mes_q_mod = None if mes_mod == "Todos" else mes_mod
+                anio_q_mod = None if anio_mod == "Todos" else anio_mod
+                pagos_lista_mod = obtener_pagos(mes=mes_q_mod, anio=anio_q_mod)
 
         if not pagos_lista_mod:
             st.info("Aun no hay pagos registrados para modificar en este periodo.")
@@ -258,9 +249,16 @@ def render_pagos() -> None:
                     with st.form(f"form_editar_pago_{p_data['id']}"):
                         col_m1, col_m2 = st.columns(2)
                         with col_m1:
-                            meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-                            idx_mes = meses.index(p_data["mes_correspondiente"]) if p_data["mes_correspondiente"] in meses else 0
-                            nuevo_mes = st.selectbox("Mes Correspondiente *", meses, index=idx_mes)
+                            idx_mes = MESES.index(p_data["mes_correspondiente"]) if p_data["mes_correspondiente"] in MESES else 0
+                            nuevo_mes = st.selectbox("Mes Correspondiente *", MESES, index=idx_mes)
+                            
+                            anio_db = p_data.get("anio_correspondiente")
+                            if not anio_db:
+                                anio_db = int(str(p_data.get("fecha_pago", datetime.now().strftime("%Y-%m-%d"))).split("-")[0])
+                            
+                            anios = [anio_db - 1, anio_db, anio_db + 1]
+                            nuevo_anio = st.selectbox("Año Correspondiente *", anios, index=1)
+                            
                             nuevo_monto = st.number_input("Monto pagado ($) *", min_value=0, value=int(p_data["monto"]), step=5000)
                         
                         with col_m2:
@@ -271,7 +269,7 @@ def render_pagos() -> None:
                             nueva_fecha = st.date_input("Fecha de pago *", value=default_date)
                             
                             metodos_pago = ["Efectivo", "Transferencia", "Otro"]
-                            idx_metodo = metodos_pago.index(p_data.get("metodo", "Efectivo")) if p_data.get("metodo", "Efectivo") in metodos_pago else 0
+                            idx_metodo = metodos_pago.index(p_data.get("metodo_pago", "Efectivo")) if p_data.get("metodo_pago", "Efectivo") in metodos_pago else 0
                             nuevo_metodo = st.selectbox("Método de pago *", metodos_pago, index=idx_metodo)
 
                         st.markdown("---")
@@ -290,13 +288,14 @@ def render_pagos() -> None:
                             else:
                                 nuevos_datos = {
                                     "mes_correspondiente": nuevo_mes,
+                                    "anio_correspondiente": nuevo_anio,
                                     "monto": int(nuevo_monto),
-                                    "metodo": nuevo_metodo,
+                                    "metodo_pago": nuevo_metodo,
                                     "fecha_pago": nueva_fecha.strftime("%Y-%m-%d")
                                 }
                                 if actualizar_pago(p_data["id"], nuevos_datos):
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue actualizado correctamente."
-                                    st.cache_data.clear()
+                                    obtener_pagos.clear()
                                     st.rerun()
                                     
                         if btn_eliminar:
@@ -305,7 +304,7 @@ def render_pagos() -> None:
                             else:
                                 if eliminar_pago(p_data["id"]):
                                     st.session_state.msg_pago_exito = f"El pago de {p_data['jugador_nombre']} fue eliminado del sistema."
-                                    st.cache_data.clear()
+                                    obtener_pagos.clear()
                                     st.rerun()
 
 if __name__ == '__main__':
