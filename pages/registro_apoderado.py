@@ -18,7 +18,9 @@ def render_registro_apoderado(token: str) -> None:
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
-    html, body, [class*="css"], .stApp * { font-family: 'Poppins', sans-serif !important; }
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0');
+    html, body, [class*="css"] { font-family: 'Poppins', sans-serif !important; }
+    .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp label, .stApp input, .stApp button { font-family: 'Poppins', sans-serif !important; }
     .stApp {
         background: linear-gradient(145deg, #8B0000 0%, #C8102E 45%, #960018 100%) !important;
     }
