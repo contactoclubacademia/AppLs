@@ -901,13 +901,21 @@ def validar_token_apoderado(token: str) -> Optional[dict]:
     """Verifica que el token sea válido y no haya expirado.
     Retorna el dict del apoderado o None."""
     try:
-        res = get_supabase().table("dim_apoderado").select("*").eq("token_registro", token).execute()
+        # Debemos usar el admin client porque el usuario aún no está autenticado,
+        # y las políticas RLS bloquean la lectura anónima de dim_apoderado.
+        res = _get_admin_client().table("dim_apoderado").select("*").eq("token_registro", token).execute()
         if not res.data:
             return None
         apoderado = res.data[0]
         # Verificar expiración
         if apoderado.get("token_expira"):
-            expira = datetime.fromisoformat(apoderado["token_expira"].replace("Z", "+00:00"))
+            expira_str = apoderado["token_expira"].replace("Z", "+00:00")
+            expira = datetime.fromisoformat(expira_str)
+            # Si el datetime es naive (no tiene timezone info), asumimos que es UTC
+            if expira.tzinfo is None:
+                from datetime import timezone
+                expira = expira.replace(tzinfo=timezone.utc)
+            
             from datetime import timezone
             if datetime.now(timezone.utc) > expira:
                 return None  # Token expirado
