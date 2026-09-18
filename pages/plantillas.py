@@ -14,9 +14,9 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from database import (obtener_jugadores, obtener_categorias,
+from backend.database import (obtener_jugadores, obtener_categorias,
                       actualizar_jugador, eliminar_jugador, activar_jugador)
-from utils import format_cat, verificar_permisos
+from backend.utils import format_cat, verificar_permisos
 
 
 def render_plantillas() -> None:
@@ -112,7 +112,7 @@ def render_plantillas() -> None:
             st.subheader(":material/manage_accounts: Modificar Jugador")
             st.write("Selecciona un jugador para actualizar su categoría, nombre, etc. o para eliminarlo.")
             
-            opciones_jugadores = {f"{j['rut']} - {j['nombre']}": j for j in jugadores_todos}
+            opciones_jugadores = {f"{j.get('rut', 'Sin RUT')} - {j.get('nombre', 'Sin Nombre')}": j for j in jugadores_todos}
             jugador_sel_str = st.selectbox(
                 "Buscar y Seleccionar Jugador", 
                 options=list(opciones_jugadores.keys()), 
@@ -123,14 +123,16 @@ def render_plantillas() -> None:
             if jugador_sel_str:
                 j_data = opciones_jugadores[jugador_sel_str]
                 
-                with st.form(f"form_editar_{j_data['rut']}"):
-                    st.markdown(f"**Editando a:** {j_data['nombre']} (RUT: {j_data['rut']})")
+                j_data_rut = j_data.get('rut', 'sin-rut')
+                j_data_nombre = j_data.get('nombre', 'Sin Nombre')
+                with st.form(f"form_editar_{j_data_rut}"):
+                    st.markdown(f"**Editando a:** {j_data_nombre} (RUT: {j_data_rut})")
                     
                     st.markdown("---")
                     st.markdown("#### Datos del Jugador")
                     c1, c2 = st.columns(2)
                     with c1:
-                        nuevo_nombre = st.text_input("Nombre Completo *", value=j_data["nombre"])
+                        nuevo_nombre = st.text_input("Nombre Completo *", value=j_data_nombre)
                         fecha_nac = j_data.get("fecha_nacimiento")
                         try:
                             anio_actual = int(str(fecha_nac).split("-")[0]) if fecha_nac else 2014
@@ -139,7 +141,7 @@ def render_plantillas() -> None:
                         nuevo_anio = st.number_input("Año de Nacimiento *", value=int(anio_actual), step=1)
                     
                     with c2:
-                        idx_cat = next((i for i, c in enumerate(categorias) if c["nombre"] == j_data["categoria"]), 0)
+                        idx_cat = next((i for i, c in enumerate(categorias) if c["nombre"] == j_data.get("categoria")), 0)
                         nueva_categoria = st.selectbox("Categoría *", categorias, index=idx_cat, format_func=format_cat)
                     
                     st.markdown("#### Datos del Apoderado")
@@ -205,7 +207,7 @@ def render_plantillas() -> None:
             
             st.markdown("##### 1. Descarga la plantilla")
             
-            ruta_plantilla = Path(__file__).parent.parent / "Plantilla_Oficial.xlsx"
+            ruta_plantilla = Path(__file__).parent.parent / "assets" / "Plantilla_Oficial.xlsx"
             
             if ruta_plantilla.exists():
                 with open(ruta_plantilla, "rb") as f:
@@ -247,7 +249,7 @@ def render_plantillas() -> None:
                         st.dataframe(df_subido.head(), width="stretch")
                         
                         if st.button("Procesar y Guardar Jugadores", type="primary", width="stretch"):
-                            from database import guardar_jugador
+                            from backend.database import guardar_jugador
                             from datetime import datetime
                             cat_map = {c["nombre"].strip().lower(): c["id"] for c in categorias}
                             
@@ -265,7 +267,7 @@ def render_plantillas() -> None:
                                             errores += 1
                                             continue
                                             
-                                        from utils import validar_rut
+                                        from backend.utils import validar_rut
                                         if not validar_rut(rut_str):
                                             errores += 1
                                             continue
@@ -308,7 +310,7 @@ def render_plantillas() -> None:
                     else:
                         st.warning("El archivo Excel está vacío. Llena los datos usando la plantilla.", icon=":material/warning:")
                 except Exception as e:
-                    st.error(f"Error al leer el archivo Excel. Asegúrate de usar la plantilla correcta. Detalle: {e}", icon=":material/error:")
+                    logger = __import__("logging").getLogger(__name__); logger.error(f"Error al leer excel: {e}"); st.error("Error al leer el archivo Excel. Asegúrate de usar la plantilla correcta y que no esté corrupta.", icon=":material/error:")
 
 if __name__ == '__main__':
     import streamlit as st

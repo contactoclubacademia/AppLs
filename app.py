@@ -36,13 +36,12 @@ ARQUITECTURA MODULAR
 import streamlit as st
 from html import escape as html_escape
 
-from database import autenticar_usuario
-from estilos import inject_css
+from backend.database import autenticar_usuario
+from ui.estilos import inject_css
 
 # =============================================================================
 # CONFIGURACION GENERAL DE LA APP
 # =============================================================================
-NOMBRE_ACADEMIA = "Academia La Serena"
 
 
 def _init_session_state() -> None:
@@ -82,6 +81,7 @@ def _route(seleccion: str) -> None:
         "Categorias": ("pages.categorias", "render_categorias"),
         "Pagos": ("pages.pagos", "render_pagos"),
         "Administración": ("pages.administracion", "render_administracion"),
+        "Portal Apoderado": ("pages.portal_apoderado", "render_portal_apoderado"),
     }
     if seleccion in routes:
         module_path, func_name = routes[seleccion]
@@ -110,10 +110,12 @@ def render_sidebar() -> str:
         opciones_disponibles = st.session_state.user.get("permisos") or []
         
         # Módulos válidos del sistema
-        modulos_validos = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos", "Administración"]
+        modulos_validos = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos", "Administración", "Portal Apoderado"]
         
         if rol == "Administrador":
-            opciones = modulos_validos
+            opciones = ["Registrar Jugador", "Plantillas", "Control de Asistencia", "Categorias", "Pagos", "Administración"]
+        elif rol == "Apoderado":
+            opciones = ["Portal Apoderado"]
         else:
             opciones = opciones_disponibles
             if not opciones:
@@ -136,7 +138,8 @@ def render_sidebar() -> str:
             "Control de Asistencia": ":material/calendar_month:",
             "Categorias": ":material/category:",
             "Pagos": ":material/payments:",
-            "Administración": ":material/admin_panel_settings:"
+            "Administración": ":material/admin_panel_settings:",
+            "Portal Apoderado": ":material/shield_person:"
         }
 
         seleccion = st.radio(
@@ -163,7 +166,7 @@ def render_sidebar() -> str:
             st.session_state.pop("supabase_client", None)
             st.session_state.pop("_supabase_session_set", None)
             try:
-                from database import get_supabase
+                from backend.database import get_supabase
                 get_supabase().auth.sign_out()
             except Exception:
                 pass
@@ -190,6 +193,21 @@ def main() -> None:
     _inject_global_css()
 
     if not st.session_state.authenticated:
+        # Check if there is a token for Apoderado registration
+        query_params = st.query_params
+        if "token" in query_params:
+            st.markdown(
+                """
+                <style>
+                    [data-testid="stSidebar"] { display: none !important; }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            from pages.registro_apoderado import render_registro_apoderado
+            render_registro_apoderado(query_params["token"])
+            return
+            
         # Ocultar sidebar en la pantalla de login
         st.markdown(
             """

@@ -13,9 +13,9 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from database import (obtener_categorias, obtener_jugadores, obtener_asistencia,
-                      guardar_asistencia, obtener_asistencia_general)
-from utils import MESES, verificar_permisos
+from backend.database import (obtener_categorias, obtener_jugadores, obtener_asistencia,
+                      guardar_asistencia, obtener_asistencia_general, obtener_horarios_categoria)
+from backend.utils import MESES, verificar_permisos
 
 def render_asistencia() -> None:
     """Modulo: toma de asistencia por fecha y categoria (Administrador y Profesor)."""
@@ -51,7 +51,30 @@ def render_asistencia() -> None:
         if not cat_sel:
             return
 
-        jugadores = obtener_jugadores(cat_sel["id"] if isinstance(cat_sel, dict) else None)
+        cat_id = cat_sel["id"] if isinstance(cat_sel, dict) else None
+
+        with st.expander("Ver Horario Semanal de la Categoría"):
+            horarios = obtener_horarios_categoria(cat_id)
+            if not horarios:
+                st.info("Esta categoría no tiene un horario configurado.")
+            else:
+                dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+                cols_dias = st.columns(7)
+                for i, col in enumerate(cols_dias):
+                    dia_num = i + 1
+                    with col:
+                        st.markdown(f"<div style='text-align: center;'><b>{dias_semana[i][:3]}</b></div>", unsafe_allow_html=True)
+                        horarios_dia = [h for h in horarios if h["dia_semana"] == dia_num]
+                        if not horarios_dia:
+                            st.caption("<div style='text-align: center; font-size: 11px;'>Libre</div>", unsafe_allow_html=True)
+                        else:
+                            for h in horarios_dia:
+                                h_inicio = str(h["hora_inicio"])[:5]
+                                h_fin = str(h["hora_fin"])[:5]
+                                with st.container(border=True):
+                                    st.markdown(f"<div style='text-align: center; font-size: 13px;'>{h_inicio}<br>{h_fin}</div>", unsafe_allow_html=True)
+
+        jugadores = obtener_jugadores(cat_id)
 
         if not jugadores:
             st.info(f"No hay jugadores registrados en la categoría {cat_sel['nombre']}.")

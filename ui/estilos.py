@@ -365,11 +365,14 @@ def inject_css() -> None:
                 margin-top: 0 !important;
             }
             .topbar-chip {
-                float: none;
-                display: inline-block;
-                margin: 0 0 12px 0;
-                font-size: 11px;
-                padding: 6px 12px;
+                position: fixed;
+                top: 15px;
+                right: 10px;
+                margin: 0;
+                font-size: 10px;
+                padding: 6px 10px;
+                z-index: 99;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .page-header { margin-bottom: 15px; }
             .page-header h1 { font-size: 17px !important; }

@@ -13,10 +13,10 @@ from datetime import date
 
 import streamlit as st
 
-from database import obtener_categorias, guardar_jugador
+from backend.database import obtener_categorias, guardar_jugador
 
 
-from utils import validar_rut, verificar_permisos
+from backend.utils import validar_rut, verificar_permisos
 
 
 def render_registro() -> None:

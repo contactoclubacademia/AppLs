@@ -27,3 +27,6 @@ textColor = "#1A1A1A"                 # texto principal (negro suave)
 font = "sans serif"
 [client]
 showSidebarNavigation = false
+
+[server]
+maxUploadSize = 5

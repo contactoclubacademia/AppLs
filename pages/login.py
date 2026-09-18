@@ -12,7 +12,7 @@ No se usa position:fixed para envolver widgets de Streamlit (incompatible).
 import streamlit as st
 from datetime import datetime, timedelta
 
-from database import autenticar_usuario
+from backend.database import autenticar_usuario
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +185,32 @@ div.block-container .stTextInput > div > div > div > button {
 }
 
 
+/* ── Botón Terciario (Enlace de texto) ── */
+div.block-container button[kind="tertiary"] {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    height: auto !important;
+    color: #6B7280 !important;
+    box-shadow: none !important;
+    min-height: 0 !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    text-decoration: none !important;
+    justify-content: center !important;
+    margin-top: 5px !important;
+}
+div.block-container button[kind="tertiary"]:hover {
+    color: #C8102E !important;
+    background: transparent !important;
+    text-decoration: underline !important;
+}
+div.block-container button[kind="tertiary"]:active {
+    color: #8B0000 !important;
+}
+
 /* ── Botón de submit ── */
 div.block-container .stFormSubmitButton > button {
     background: linear-gradient(135deg, #C8102E 0%, #8E0B20 100%) !important;
@@ -271,12 +297,24 @@ div.block-container [data-testid="stForm"] {
 }
 
 /* ── Quitar márgenes extra de Streamlit dentro del card ── */
-div.block-container .element-container,
-div.block-container [data-testid="stVerticalBlock"] {
+div.block-container .element-container {
+    gap: 0 !important;
+}
+div.block-container [data-testid="stVerticalBlock"]:not(:has([data-testid="stExpander"])) {
     gap: 0 !important;
 }
 div.block-container .stTextInput {
     margin-bottom: 14px !important;
+}
+
+/* ── Estilos para el Expander de Recuperación ── */
+div.block-container [data-testid="stExpander"] details summary {
+    justify-content: center !important;
+}
+div.block-container [data-testid="stExpander"] details summary p {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #6B7280 !important;
 }
 
 /* ── Responsive móvil ── */
@@ -291,12 +329,7 @@ div.block-container .stTextInput {
 }
 </style>
 """
-
-_FOOTER_HTML = """
-<div class="login-page-footer">
-    © 2024 Academia Deportiva La Serena &nbsp;·&nbsp; Sistema de Gestión Deportiva &nbsp;·&nbsp; Todos los derechos reservados.
-</div>
-"""
+_FOOTER_HTML = ""
 
 
 # ---------------------------------------------------------------------------
@@ -339,94 +372,106 @@ def render_login() -> None:
         unsafe_allow_html=True,
     )
 
-    # 3) Formulario de Streamlit (sigue en el flujo normal del card)
-    with st.form("form_login", clear_on_submit=False):
-        email = st.text_input(
-            "Correo Electrónico",
-            placeholder="tucorreo@ejemplo.com",
-            key="login_email",
-        )
-        password = st.text_input(
-            "Contraseña",
-            type="password",
-            placeholder="••••••••",
-            key="login_password",
-        )
-        enviado = st.form_submit_button("INICIAR SESIÓN", use_container_width=True)
+    # Mensaje de éxito si viene de registro o recuperación
+    if st.session_state.pop("registro_exitoso", False):
+        st.success("¡Cuenta creada exitosamente! Ingresa con tu nueva contraseña.", icon=":material/check_circle:")
+    if st.session_state.pop("recuperacion_exitosa", False):
+        st.success("¡Contraseña actualizada! Ya puedes iniciar sesión con tu nueva clave.", icon=":material/check_circle:")
 
-        if enviado:
-            email_limpio = email.strip().lower()
+    # 3) Flujo de Estado: 0=Login, 1=Pedir Correo, 2=Pedir OTP
+    if "recuperacion_fase" not in st.session_state:
+        st.session_state.recuperacion_fase = 0
 
-            if not email_limpio:
-                st.warning("Ingresa tu correo electrónico para continuar.")
-            else:
-                if email_limpio not in bloqueos:
-                    bloqueos[email_limpio] = {
-                        "intentos": 0,
-                        "bloqueado_hasta": None,
-                        "ultimo_intento": None,
-                    }
-
-                estado = bloqueos[email_limpio]
-                ahora = datetime.now()
-
-                # Limpiar historial si pasaron 10 min sin bloqueo activo
-                if (
-                    estado["intentos"] > 0
-                    and estado.get("ultimo_intento")
-                    and not estado["bloqueado_hasta"]
-                ):
-                    if (ahora - estado["ultimo_intento"]).total_seconds() > 600:
-                        estado["intentos"] = 0
-                        estado["ultimo_intento"] = None
-
-                # Verificar bloqueo activo
-                if estado["bloqueado_hasta"] and ahora < estado["bloqueado_hasta"]:
-                    restante = int((estado["bloqueado_hasta"] - ahora).total_seconds())
-                    minutos = restante // 60
-                    segundos = restante % 60
-                    st.error(f"Acceso bloqueado. Intenta de nuevo en {minutos}m {segundos}s.")
+    if st.session_state.recuperacion_fase == 0:
+        # --- FORMULARIO DE LOGIN NORMAL ---
+        with st.form("form_login", clear_on_submit=False):
+            email = st.text_input("Correo Electrónico", placeholder="tucorreo@ejemplo.com", key="login_email")
+            password = st.text_input("Contraseña", type="password", placeholder="••••••••", key="login_password")
+            enviado = st.form_submit_button("INICIAR SESIÓN", use_container_width=True)
+            
+            if enviado:
+                email_limpio = email.strip().lower()
+                if not email_limpio:
+                    st.warning("Ingresa tu correo electrónico para continuar.")
                 else:
-                    # Expiró el bloqueo → resetear
-                    if estado["bloqueado_hasta"] and ahora >= estado["bloqueado_hasta"]:
-                        estado["intentos"] = 0
-                        estado["bloqueado_hasta"] = None
-                        estado["ultimo_intento"] = None
-
-                    if not password:
-                        st.warning("Ingresa tu contraseña para continuar.")
+                    if email_limpio not in bloqueos:
+                        bloqueos[email_limpio] = {"intentos": 0, "bloqueado_hasta": None, "ultimo_intento": None}
+                    
+                    estado = bloqueos[email_limpio]
+                    ahora = datetime.now()
+                    
+                    if estado["intentos"] > 0 and estado.get("ultimo_intento") and not estado["bloqueado_hasta"]:
+                        if (ahora - estado["ultimo_intento"]).total_seconds() > 600:
+                            estado["intentos"] = 0
+                            estado["ultimo_intento"] = None
+                            
+                    if estado["bloqueado_hasta"] and ahora < estado["bloqueado_hasta"]:
+                        restante = int((estado["bloqueado_hasta"] - ahora).total_seconds())
+                        st.error(f"Acceso bloqueado. Intenta de nuevo en {restante // 60}m {restante % 60}s.")
                     else:
-                        usuario = autenticar_usuario(email_limpio, password)
-                        if usuario:
+                        if estado["bloqueado_hasta"] and ahora >= estado["bloqueado_hasta"]:
                             estado["intentos"] = 0
                             estado["bloqueado_hasta"] = None
                             estado["ultimo_intento"] = None
-                            st.session_state.authenticated = True
-                            st.session_state.user = usuario
-                            st.rerun()
+                            
+                        if not password:
+                            st.warning("Ingresa tu contraseña para continuar.")
                         else:
-                            estado["intentos"] += 1
-                            estado["ultimo_intento"] = ahora
-                            intentos_restantes = 5 - estado["intentos"]
-
-                            if intentos_restantes <= 0:
-                                estado["bloqueado_hasta"] = ahora + timedelta(minutes=5)
-                                st.error("Demasiados intentos fallidos. Cuenta bloqueada por 5 minutos.")
+                            from backend.database import obtener_jugadores_de_apoderado
+                            usuario = autenticar_usuario(email_limpio, password)
+                            if usuario:
+                                # Verificar si el apoderado quedó inactivo (sin jugadores activos)
+                                if usuario.get("rol") == "Apoderado":
+                                    jugadores_activos = obtener_jugadores_de_apoderado(usuario["apoderado_id"])
+                                    if not jugadores_activos:
+                                        st.error("Tu cuenta está desactivada porque no tienes jugadores activos en la academia.")
+                                        return  # Detenemos la ejecución sin iniciar sesión
+                                
+                                estado["intentos"] = 0
+                                estado["bloqueado_hasta"] = None
+                                estado["ultimo_intento"] = None
+                                st.session_state.authenticated = True
+                                st.session_state.user = usuario
+                                st.rerun()
                             else:
-                                plural = "s" if intentos_restantes != 1 else ""
-                                st.error(f"Correo o contraseña incorrectos. ({intentos_restantes} intento{plural} restante{plural}).")
+                                estado["intentos"] += 1
+                                estado["ultimo_intento"] = ahora
+                                intentos_restantes = 5 - estado["intentos"]
+                                if intentos_restantes <= 0:
+                                    estado["bloqueado_hasta"] = ahora + timedelta(minutes=5)
+                                    st.error("Demasiados intentos fallidos. Cuenta bloqueada por 5 minutos.")
+                                else:
+                                    plural = "s" if intentos_restantes != 1 else ""
+                                    st.error(f"Correo o contraseña incorrectos. ({intentos_restantes} intento{plural} restante{plural}).")
+        
+        # Botón para ir a recuperar contraseña
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("¿Problemas para ingresar? Restablecer contraseña", type="tertiary", use_container_width=True):
+            st.session_state.recuperacion_fase = 1
+            st.rerun()
+            
+    elif st.session_state.recuperacion_fase == 1:
+        # --- FASE 1: CONTACTAR ADMIN ---
+        st.markdown("<h4 style='text-align:center; color:#C8102E; margin-bottom:5px;'>Recuperar Contraseña</h4>", unsafe_allow_html=True)
+        st.markdown(
+            "<p style='font-size:13px; color:#4B5563; text-align:center;'>"
+            "Por motivos de seguridad, para restablecer tu contraseña debes "
+            "comunicarte directamente con la administración de la academia. Ellos te asignarán una nueva clave provisional de inmediato.</p>", 
+            unsafe_allow_html=True
+        )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Volver al inicio", type="primary", use_container_width=True):
+            st.session_state.recuperacion_fase = 0
+            st.rerun()
 
-    # 4) Pie de tarjeta
+    # 4) Pie de tarjeta original
     st.markdown(
         """
-        <p class="login-footer-hint">¿Problemas para ingresar? Contacta al administrador.</p>
-        <p class="login-founded">Fundada el 21 de Agosto de 1987 · Chile</p>
+        <p class="login-founded" style="margin-top: 30px;">Fundada el 21 de Agosto de 1987 · Chile</p>
         """,
         unsafe_allow_html=True,
     )
-
-    # 5) Footer fijo de la página
-    st.markdown(_FOOTER_HTML, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

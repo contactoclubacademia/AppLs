@@ -10,10 +10,11 @@ Diseno corporativo: contenedores con borde, botones primary, iconos Material.
 
 import streamlit as st
 
-from database import (obtener_categorias, obtener_profesores,
+from backend.database import (obtener_categorias, obtener_profesores,
                       crear_categoria, actualizar_profesor_categoria,
-                      eliminar_categoria, obtener_jugadores, desvincular_jugadores_categoria)
-from utils import verificar_permisos
+                      eliminar_categoria, obtener_jugadores, desvincular_jugadores_categoria,
+                      obtener_horarios_categoria, agregar_horario_categoria, eliminar_horario_categoria)
+from backend.utils import verificar_permisos
 
 
 def render_categorias() -> None:
@@ -113,6 +114,56 @@ def render_categorias() -> None:
 
                 # Botón eliminar
                 st.write("")
+                st.divider()
+                st.markdown("#### Horario Semanal")
+                horarios = obtener_horarios_categoria(cat["id"])
+                
+                dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+                cols_dias = st.columns(7)
+                
+                # Renderizar los bloques por día
+                for i, col in enumerate(cols_dias):
+                    dia_num = i + 1
+                    with col:
+                        st.markdown(f"<div style='text-align: center;'><b>{dias_semana[i][:3]}</b></div>", unsafe_allow_html=True)
+                        horarios_dia = [h for h in horarios if h["dia_semana"] == dia_num]
+                        if not horarios_dia:
+                            st.caption("<div style='text-align: center; font-size: 11px;'>Libre</div>", unsafe_allow_html=True)
+                        else:
+                            for h in horarios_dia:
+                                h_inicio = str(h["hora_inicio"])[:5]
+                                h_fin = str(h["hora_fin"])[:5]
+                                with st.container(border=True):
+                                    st.markdown(f"<div style='text-align: center; font-size: 13px;'>{h_inicio}<br>{h_fin}</div>", unsafe_allow_html=True)
+                                    if st.button("Borrar", key=f"del_h_{h['id']}", help="Eliminar bloque", use_container_width=True):
+                                        if eliminar_horario_categoria(h["id"]):
+                                            obtener_horarios_categoria.clear()
+                                            st.rerun()
+                
+                st.write("")
+                with st.popover("Añadir bloque de horario", use_container_width=True):
+                    with st.form(f"form_add_horario_{cat['id']}", clear_on_submit=True):
+                        st.markdown("**Nuevo horario**")
+                        dia_sel = st.selectbox("Día", dias_semana)
+                        c_hi, c_hf = st.columns(2)
+                        with c_hi:
+                            import datetime
+                            hi = st.time_input("Inicio", datetime.time(16, 0))
+                        with c_hf:
+                            hf = st.time_input("Fin", datetime.time(18, 0))
+                            
+                        add_h = st.form_submit_button("Agregar bloque", type="primary", use_container_width=True)
+                        if add_h:
+                            dia_idx = dias_semana.index(dia_sel) + 1
+                            if hi >= hf:
+                                st.error("La hora de inicio debe ser menor a la de fin.")
+                            else:
+                                if agregar_horario_categoria(cat["id"], dia_idx, hi.strftime("%H:%M:%S"), hf.strftime("%H:%M:%S")):
+                                    st.success("Añadido")
+                                    obtener_horarios_categoria.clear()
+                                    st.rerun()
+                st.divider()
+
                 # Estado para la confirmación de eliminación
                 if f"confirmar_eliminar_{cat['id']}" not in st.session_state:
                     st.session_state[f"confirmar_eliminar_{cat['id']}"] = False

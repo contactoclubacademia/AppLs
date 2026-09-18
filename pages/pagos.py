@@ -15,10 +15,11 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
-from utils import format_cat, MESES, verificar_permisos
-from database import (obtener_jugadores, obtener_categorias,
+from backend.utils import format_cat, MESES, verificar_permisos
+from backend.database import (obtener_jugadores, obtener_categorias,
                       guardar_pago, obtener_pagos, actualizar_pago, eliminar_pago,
-                      obtener_estado_pagos_mes)
+                      obtener_estado_pagos_mes, obtener_comprobantes_pendientes_admin,
+                      aprobar_comprobante, rechazar_comprobante)
 
 def render_pagos() -> None:
     """Modulo: registro y visualizacion de pagos de mensualidades (solo Administrador)."""
@@ -46,8 +47,8 @@ def render_pagos() -> None:
     lista_categorias = obtener_categorias()
 
 
-    tab_registro, tab_historial, tab_modificar, tab_morosos = st.tabs([
-        "Registrar Pago", "Historial de Pagos", "Modificar / Eliminar", "⚠️ Morosos"
+    tab_registro, tab_historial, tab_modificar, tab_morosos, tab_comprobantes = st.tabs([
+        "Registrar Pago", "Historial de Pagos", "Modificar / Eliminar", "Morosos", "Comprobantes Pendientes"
     ])
 
     with tab_registro:
@@ -66,7 +67,7 @@ def render_pagos() -> None:
                 st.warning("No hay jugadores en la categoria seleccionada.", icon=":material/warning:")
                 opciones_jugador = []
             else:
-                opciones_jugador = [f"{j['nombre']} ({j['rut']}) - {j['categoria']}" for j in jugadores_filtrados]
+                opciones_jugador = [f"{j.get('nombre', 'Sin Nombre')} ({j.get('rut', 'Sin RUT')}) - {j.get('categoria', 'Sin Categoría')}" for j in jugadores_filtrados]
 
             if opciones_jugador:
                 with c2:
@@ -79,11 +80,11 @@ def render_pagos() -> None:
                     st.subheader(":material/person: Informacion del Jugador")
                     col_a, col_b = st.columns(2)
                     with col_a:
-                        st.write(f"**Nombre:** {jugador_sel['nombre']}")
-                        st.write(f"**RUT:** {jugador_sel['rut']}")
+                        st.write(f"**Nombre:** {jugador_sel.get('nombre', 'Sin Nombre')}")
+                        st.write(f"**RUT:** {jugador_sel.get('rut', 'Sin RUT')}")
                     with col_b:
-                        st.write(f"**Categoria:** {jugador_sel['categoria']}")
-                        st.write(f"**Apoderado:** {jugador_sel['apoderado_nombre']} ({jugador_sel['apoderado_telefono']})")
+                        st.write(f"**Categoria:** {jugador_sel.get('categoria', 'Sin Categoria')}")
+                        st.write(f"**Apoderado:** {jugador_sel.get('apoderado_nombre', 'Sin Apoderado')} ({jugador_sel.get('apoderado_telefono', '')})")
 
                 with st.form("form_registrar_pago", clear_on_submit=True):
                     col_m1, col_m2 = st.columns(2)
@@ -533,6 +534,86 @@ def render_pagos() -> None:
                         nombre_hoja="Abonadores",
                         key_suffix="abono"
                     )
+
+
+    # ─────────────────────────────────────────────────────────────────
+    # PESTAÑA: COMPROBANTES PENDIENTES
+    # ─────────────────────────────────────────────────────────────────
+    with tab_comprobantes:
+        st.subheader("Comprobantes Pendientes de Aprobación")
+        st.write("Revisa los comprobantes de pago enviados por los apoderados.")
+        
+        pendientes = obtener_comprobantes_pendientes_admin()
+        
+        if not pendientes:
+            st.info("No hay comprobantes pendientes de revisión.")
+        else:
+            st.success(f"Tienes {len(pendientes)} comprobante(s) pendiente(s) de revisión.")
+            
+            for comp in pendientes:
+                with st.container(border=True):
+                    mes_nombre = MESES[comp['mes'] - 1]
+                    
+                    c1, c2 = st.columns([2, 1])
+                    with c1:
+                        st.markdown(f"#### {comp['jugador_nombre']}")
+                        st.write(f"**Apoderado:** {comp['apoderado_nombre']} ({comp['apoderado_telefono']})")
+                        st.write(f"**Correspondiente a:** {mes_nombre} {comp['anio']}")
+                        
+                        monto_sugerido = int(comp.get('monto_extraido') or 30000)
+                        banco = comp.get('banco_extraido') or "Transferencia"
+                        fecha_comp = comp.get('fecha_extraido') or date.today().strftime("%Y-%m-%d")
+                        
+                        st.write(f"**Datos extraídos del comprobante:**")
+                        st.write(f"- Monto: ${comp.get('monto_extraido') or 'N/A'}")
+                        st.write(f"- Banco: {comp.get('banco_extraido') or 'N/A'}")
+                        st.write(f"- Fecha: {comp.get('fecha_extraido') or 'N/A'}")
+                        st.write(f"- Operación: {comp.get('num_operacion') or 'N/A'}")
+                        
+                        with st.expander("Aprobar Pago"):
+                            with st.form(f"form_aprobar_{comp['id']}"):
+                                m1, m2 = st.columns(2)
+                                with m1:
+                                    monto_aprob = st.number_input("Monto Confirmado ($)", min_value=0, value=monto_sugerido, step=5000, key=f"ma_{comp['id']}")
+                                    metodo_aprob = st.selectbox("Método de Pago", ["Transferencia", "Efectivo", "Otro"], key=f"me_{comp['id']}")
+                                with m2:
+                                    try:
+                                        fecha_default = datetime.strptime(str(fecha_comp).split(" ")[0].split("T")[0], "%Y-%m-%d").date()
+                                    except:
+                                        fecha_default = date.today()
+                                        
+                                    fecha_aprob = st.date_input("Fecha de Pago", value=fecha_default, key=f"f_{comp['id']}")
+                                
+                                if st.form_submit_button("Confirmar y Aprobar Pago", type="primary"):
+                                    datos_pago = {
+                                        "jugador_id": comp["jugador_id"],
+                                        "apoderado_id": comp["apoderado_id"],
+                                        "mes_correspondiente": mes_nombre,
+                                        "anio_correspondiente": comp["anio"],
+                                        "monto": int(monto_aprob),
+                                        "metodo_pago": metodo_aprob,
+                                        "fecha_pago": fecha_aprob.strftime("%Y-%m-%d")
+                                    }
+                                    if aprobar_comprobante(comp['id'], datos_pago):
+                                        st.session_state.msg_pago_exito = f"Comprobante aprobado y pago registrado para {comp['jugador_nombre']}."
+                                        st.rerun()
+                                        
+                        with st.expander("Rechazar Comprobante"):
+                            with st.form(f"form_rechazar_{comp['id']}"):
+                                motivo = st.text_input("Motivo del rechazo", placeholder="Ej: La imagen no es clara, monto incorrecto...")
+                                if st.form_submit_button("Rechazar Comprobante", type="secondary"):
+                                    if not motivo.strip():
+                                        st.error("Debes ingresar un motivo para rechazar.")
+                                    else:
+                                        if rechazar_comprobante(comp['id'], motivo):
+                                            st.session_state.msg_pago_exito = f"Comprobante rechazado. El apoderado podrá subir uno nuevo."
+                                            st.rerun()
+
+                    with c2:
+                        if comp.get('imagen_url'):
+                            st.image(comp['imagen_url'], caption="Comprobante Subido", use_container_width=True)
+                        else:
+                            st.info("Sin imagen")
 
 
 if __name__ == '__main__':

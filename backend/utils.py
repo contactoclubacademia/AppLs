@@ -22,7 +22,7 @@ def format_cat(cat):
 def validar_rut(rut: str) -> bool:
     """
     Valida un RUT chileno.
-    Formato esperado: ^\d{7,8}-[\dkK]$ (ej: 12345678-9)
+    Formato esperado: ^\\d{7,8}-[\\dkK]$ (ej: 12345678-9)
     """
     rut = rut.strip()
     if not re.match(r"^\d{7,8}-[\dkK]$", rut):
